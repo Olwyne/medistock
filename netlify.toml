@@ -1,21 +1,15 @@
 # MediStock - Déploiement Netlify
-# L’image Netlify par défaut n’inclut pas Flutter. Deux options :
+# Build sur Netlify avec netlify-plugin-flutter.
+# Définir SUPABASE_URL et SUPABASE_ANON_KEY dans Netlify (Environment variables).
 
-# Option A : Build local puis déploiement du dossier build/web
-# 1. En local : flutter build web --dart-define=SUPABASE_URL=xxx --dart-define=SUPABASE_ANON_KEY=xxx
-# 2. Dans Netlify : Build command = (vide ou "echo done"), Publish directory = build/web
-# 3. Déployer en drag-and-drop du dossier build/web ou via CLI : netlify deploy --dir=build/web --prod
-
-# Option B : Build sur Netlify (nécessite une image ou un plugin avec Flutter)
-# Décommenter et adapter si vous utilisez une image Docker / buildpack avec Flutter :
-# [build]
-#   command = "flutter pub get && flutter build web --release --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
-#   publish = "build/web"
+[[plugins]]
+  package = "netlify-plugin-flutter"
+  [plugins.inputs]
+    channel = "stable"
 
 [build]
+  command = "npm run build"
   publish = "build/web"
-  # Commande vide : build à faire en local, puis déployer build/web (voir README)
-  command = "echo 'Build Flutter en local : flutter build web --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...'"
 
 # Redirects SPA : toutes les routes vers index.html pour le routing Flutter
 [[redirects]]
