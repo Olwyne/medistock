@@ -6,6 +6,6 @@
     "build": "flutter pub get && flutter build web --release --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
   },
   "devDependencies": {
-    "netlify-plugin-flutter": "^2.0.0"
+    "netlify-plugin-flutter": "^1.2.0"
   }
 }
