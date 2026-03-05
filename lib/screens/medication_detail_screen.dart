@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -11,7 +12,8 @@ import '../services/reminder_service.dart';
 import 'add_medication_screen.dart';
 
 class MedicationDetailScreen extends StatefulWidget {
-  final int medicationId;
+  /// Sur mobile : id local (int). Sur web : serverId (String).
+  final dynamic medicationId;
 
   const MedicationDetailScreen({super.key, required this.medicationId});
 
@@ -91,7 +93,7 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
             onPressed: () async {
               final provider = context.read<MedicationProvider>();
               final navigator = Navigator.of(context);
-              final medicationId = m.id!;
+              final medicationId = kIsWeb ? m.serverId : m.id;
               final confirm = await showDialog<bool>(
                 context: context,
                 builder: (ctx) => AlertDialog(
@@ -108,7 +110,7 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
                 ),
               );
               if (confirm == true && mounted) {
-                await provider.delete(medicationId);
+                if (medicationId != null) await provider.delete(medicationId);
                 if (mounted) navigator.pop();
               }
             },
@@ -223,7 +225,7 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
                               final provider = context.read<MedicationProvider>();
                               final messenger = ScaffoldMessenger.maybeOf(context);
                               final unite = m.unite;
-                              await provider.takeStock(m.id!, qty);
+                              await provider.takeStock(kIsWeb ? m.serverId : m.id, qty);
                               await _load();
                               if (mounted && messenger != null) {
                                 messenger.showSnackBar(
@@ -254,7 +256,7 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
                   final provider = context.read<MedicationProvider>();
                   final messenger = ScaffoldMessenger.maybeOf(context);
                   final unite = m.unite;
-                  await provider.addStock(m.id!, 1);
+                  await provider.addStock(kIsWeb ? m.serverId : m.id, 1);
                   await _load();
                   if (mounted && messenger != null) {
                     messenger.showSnackBar(

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/medication.dart';
 import '../models/medication_units.dart';
+import '../providers/auth_provider.dart';
 import '../providers/family_provider.dart';
 import '../providers/medication_provider.dart';
 import '../services/interactions_service.dart';
@@ -99,7 +100,8 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     final lieu = _lieuController.text.trim().isEmpty ? null : _lieuController.text.trim();
     final seuil = int.tryParse(_seuilController.text) ?? 0;
 
-    final hasInteraction = await InteractionsService.hasPossibleInteraction(nom);
+    final familyId = context.read<AuthProvider>().currentFamilyId;
+    final hasInteraction = await InteractionsService.hasPossibleInteraction(nom, familyId: familyId);
     if (hasInteraction && mounted) {
       final l10n = AppLocalizations.of(context);
       final proceed = await showDialog<bool>(
@@ -138,19 +140,23 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
         photoPath: _photoPath,
       ));
     } else {
-      await provider.add(Medication(
-        codeScanned: code,
-        nom: nom,
-        quantite: quantite,
-        unite: unite,
-        quantiteParUnite: quantiteParUnite,
-        lieu: lieu,
-        memberId: _memberId,
-        datePeremption: _datePeremption,
-        seuilAlerte: seuil,
-        noticeUrl: widget.noticeUrl,
-        photoPath: _photoPath,
-      ));
+      final familyId = context.read<AuthProvider>().currentFamilyId;
+      await provider.add(
+        Medication(
+          codeScanned: code,
+          nom: nom,
+          quantite: quantite,
+          unite: unite,
+          quantiteParUnite: quantiteParUnite,
+          lieu: lieu,
+          memberId: _memberId,
+          datePeremption: _datePeremption,
+          seuilAlerte: seuil,
+          noticeUrl: widget.noticeUrl,
+          photoPath: _photoPath,
+        ),
+        familyId: familyId,
+      );
     }
     if (mounted) {
       setState(() => _saving = false);

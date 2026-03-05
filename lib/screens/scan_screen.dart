@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_beep/flutter_beep.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -65,7 +66,7 @@ class _ScanScreenState extends State<ScanScreen> {
     if (_mode == ScanMode.take) {
       final existing = await provider.getByCode(raw);
       if (existing != null) {
-        await provider.takeStock(existing.id!, 1);
+        await provider.takeStock(kIsWeb ? existing.serverId : existing.id, 1);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -112,7 +113,7 @@ class _ScanScreenState extends State<ScanScreen> {
         ),
       );
       if (add == true && mounted) {
-        await provider.addStock(existing.id!, 1);
+        await provider.addStock(kIsWeb ? existing.serverId : existing.id, 1);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

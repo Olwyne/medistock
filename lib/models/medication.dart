@@ -1,6 +1,8 @@
 /// Modèle représentant un médicament dans l'inventaire.
 class Medication {
   final int? id;
+  /// UUID Supabase (sync), null en local seul.
+  final String? serverId;
   final String codeScanned;
   final String nom;
   final int quantite;
@@ -15,6 +17,7 @@ class Medication {
 
   const Medication({
     this.id,
+    this.serverId,
     required this.codeScanned,
     required this.nom,
     required this.quantite,
@@ -30,6 +33,7 @@ class Medication {
 
   Medication copyWith({
     int? id,
+    String? serverId,
     String? codeScanned,
     String? nom,
     int? quantite,
@@ -44,6 +48,7 @@ class Medication {
   }) {
     return Medication(
       id: id ?? this.id,
+      serverId: serverId ?? this.serverId,
       codeScanned: codeScanned ?? this.codeScanned,
       nom: nom ?? this.nom,
       quantite: quantite ?? this.quantite,
@@ -61,6 +66,7 @@ class Medication {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      'remote_id': serverId,
       'code_scanned': codeScanned,
       'nom': nom,
       'quantite': quantite,
@@ -78,6 +84,7 @@ class Medication {
   factory Medication.fromMap(Map<String, dynamic> map) {
     return Medication(
       id: map['id'] as int?,
+      serverId: map['remote_id'] as String?,
       codeScanned: map['code_scanned'] as String,
       nom: map['nom'] as String,
       quantite: map['quantite'] as int,

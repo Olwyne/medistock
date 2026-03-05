@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -14,6 +15,11 @@ class ReminderService {
 
   static Future<void> init() async {
     if (_initialized) return;
+    // Sur le web, pas de notifications natives : on ne fait rien.
+    if (kIsWeb) {
+      _initialized = true;
+      return;
+    }
     tz_data.initializeTimeZones();
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const ios = DarwinInitializationSettings(
@@ -40,6 +46,7 @@ class ReminderService {
   }
 
   static Future<bool> _requestPermission() async {
+    if (kIsWeb) return true;
     if (Platform.isIOS) {
       final result = await _plugin
           .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
@@ -55,24 +62,29 @@ class ReminderService {
     return true;
   }
 
-  static Future<String?> getReminderTime(int medicationId) async {
+  /// [id] : int (mobile) ou String serverId (web).
+  static Future<String?> getReminderTime(dynamic id) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('$_prefix$medicationId');
+    return prefs.getString('$_prefix${id.toString()}');
   }
 
-  static Future<void> setReminderTime(int medicationId, String timeHHmm) async {
+  static Future<void> setReminderTime(dynamic id, String timeHHmm) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('$_prefix$medicationId', timeHHmm);
+    await prefs.setString('$_prefix${id.toString()}', timeHHmm);
   }
 
-  static Future<void> clearReminder(int medicationId) async {
+  static Future<void> clearReminder(dynamic id) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('$_prefix$medicationId');
-    await _plugin.cancel(medicationId);
+    await prefs.remove('$_prefix${id.toString()}');
+    if (!kIsWeb && id is int) await _plugin.cancel(id);
   }
 
   /// Schedules a daily notification at timeHHmm (e.g. "08:00"). medicationName for the body.
-  static Future<void> scheduleReminder(int medicationId, String timeHHmm, String medicationName) async {
+  /// [medicationId] : int (mobile) ou String (web) ; sur web on enregistre l'heure en prefs uniquement.
+  static Future<void> scheduleReminder(dynamic medicationId, String timeHHmm, String medicationName) async {
+    await setReminderTime(medicationId, timeHHmm);
+    if (kIsWeb) return;
+    if (medicationId is! int) return;
     await _requestPermission();
     final parts = timeHHmm.split(':');
     if (parts.length < 2) return;

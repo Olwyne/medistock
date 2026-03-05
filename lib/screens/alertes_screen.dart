@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -142,7 +143,7 @@ class _Section extends StatelessWidget {
                 ),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => MedicationDetailScreen(medicationId: m.id!),
+                    builder: (_) => MedicationDetailScreen(medicationId: kIsWeb ? m.serverId : m.id),
                   ),
                 ),
               ),

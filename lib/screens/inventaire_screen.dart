@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -417,7 +418,7 @@ class _MedicationCard extends StatelessWidget {
       child: InkWell(
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => MedicationDetailScreen(medicationId: medication.id!),
+            builder: (_) => MedicationDetailScreen(medicationId: kIsWeb ? medication.serverId : medication.id),
           ),
         ),
         borderRadius: BorderRadius.circular(12),

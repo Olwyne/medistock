@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../l10n/app_localizations.dart';
+import '../providers/auth_provider.dart';
 import '../providers/family_provider.dart';
 import '../providers/locale_provider.dart';
 import '../providers/medication_provider.dart';
@@ -29,10 +31,25 @@ class SettingsScreen extends StatelessWidget {
       body: FutureBuilder<void>(
         future: context.read<SettingsProvider>().load(),
         builder: (context, _) {
-          return Consumer5<SettingsProvider, LocaleProvider, ThemeProvider, FamilyProvider, MedicationProvider>(
-            builder: (context, settings, localeProvider, themeProvider, familyProvider, medicationProvider, _) {
+          return Consumer6<AuthProvider, SettingsProvider, LocaleProvider, ThemeProvider, FamilyProvider, MedicationProvider>(
+            builder: (context, authProvider, settings, localeProvider, themeProvider, familyProvider, medicationProvider, _) {
               return ListView(
                 children: [
+                  if (authProvider.isConfigured && authProvider.isSignedIn) ...[
+                    ListTile(
+                      leading: const Icon(Icons.account_circle),
+                      title: Text(authProvider.userEmail ?? 'Compte'),
+                      subtitle: const Text('Foyer synchronisé'),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.logout),
+                      title: const Text('Déconnexion'),
+                      onTap: () async {
+                        await authProvider.signOut();
+                      },
+                    ),
+                    const Divider(),
+                  ],
                   ListTile(
                     leading: const Icon(Icons.language),
                     title: Text(l10n.language),
@@ -82,12 +99,14 @@ class SettingsScreen extends StatelessWidget {
                     title: Text(l10n.places),
                     onTap: () => _showPlacesSection(context, familyProvider),
                   ),
-                  ListTile(
-                    leading: const Icon(Icons.health_and_safety_outlined),
-                    title: Text(l10n.health),
-                    subtitle: Text(l10n.allergies),
-                    onTap: () => _showHealthSection(context, familyProvider),
-                  ),
+                  if (!kIsWeb) ...[
+                    ListTile(
+                      leading: const Icon(Icons.health_and_safety_outlined),
+                      title: Text(l10n.health),
+                      subtitle: Text(l10n.allergies),
+                      onTap: () => _showHealthSection(context, familyProvider),
+                    ),
+                  ],
                   ListTile(
                     leading: const Icon(Icons.bar_chart),
                     title: Text(l10n.statsTitle),
@@ -95,22 +114,24 @@ class SettingsScreen extends StatelessWidget {
                       MaterialPageRoute(builder: (_) => const StatsScreen()),
                     ),
                   ),
-                  const Divider(),
-                  ListTile(
-                    leading: const Icon(Icons.save_alt),
-                    title: Text(l10n.backup),
-                    onTap: () => _doBackup(context),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.restore),
-                    title: Text(l10n.restore),
-                    onTap: () => _doRestore(context),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.picture_as_pdf),
-                    title: Text(l10n.exportPdfDoctor),
-                    onTap: () => _doExportPdf(context, medicationProvider, familyProvider),
-                  ),
+                  if (!kIsWeb) ...[
+                    const Divider(),
+                    ListTile(
+                      leading: const Icon(Icons.save_alt),
+                      title: Text(l10n.backup),
+                      onTap: () => _doBackup(context),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.restore),
+                      title: Text(l10n.restore),
+                      onTap: () => _doRestore(context),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.picture_as_pdf),
+                      title: Text(l10n.exportPdfDoctor),
+                      onTap: () => _doExportPdf(context, medicationProvider, familyProvider),
+                    ),
+                  ],
                 ],
               );
             },
@@ -508,16 +529,21 @@ class _AllergiesScreen extends StatefulWidget {
 
 class _AllergiesScreenState extends State<_AllergiesScreen> {
   List<Map<String, dynamic>> _allergies = [];
+  bool _loadStarted = false;
 
-  Future<void> _load() async {
-    final list = await AppDatabase.getAllergies();
-    setState(() => _allergies = list);
+  Future<void> _load(String? familyId) async {
+    final list = await AppDatabase.getAllergies(familyId: familyId);
+    if (mounted) setState(() => _allergies = list);
   }
 
   @override
-  void initState() {
-    super.initState();
-    _load();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_loadStarted && mounted) {
+      _loadStarted = true;
+      final familyId = context.read<AuthProvider>().currentFamilyId;
+      _load(familyId);
+    }
   }
 
   @override
@@ -582,11 +608,13 @@ class _AllergiesScreenState extends State<_AllergiesScreen> {
                 ),
               );
               if (result == true && controller.text.trim().isNotEmpty) {
+                final familyId = context.read<AuthProvider>().currentFamilyId;
                 await AppDatabase.insertAllergy(
                   memberId: selectedMemberId,
                   allergyText: controller.text.trim(),
+                  familyId: familyId,
                 );
-                await _load();
+                if (context.mounted) await _load(familyId);
               }
             },
           ),
@@ -613,8 +641,9 @@ class _AllergiesScreenState extends State<_AllergiesScreen> {
                     trailing: IconButton(
                       icon: const Icon(Icons.delete_outline),
                       onPressed: () async {
+                        final familyId = context.read<AuthProvider>().currentFamilyId;
                         await AppDatabase.deleteAllergy(id);
-                        await _load();
+                        if (context.mounted) await _load(familyId);
                       },
                     ),
                   ),

@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  supabase_flutter: ^2.8.0
+  flutter_dotenv: ^5.2.1
   mobile_scanner: ^6.0.2
   path: ^1.9.0
   path_provider: ^2.1.4
@@ -35,7 +37,21 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  image_path: "logo.png"
+  android: true
+  ios: true
+  web:
+    generate: true
+    image_path: "logo.png"
+    background_color: "#2E7D32"
+    theme_color: "#2E7D32"
+  macos:
+    generate: true
 
 flutter:
   uses-material-design: true
   generate: true
+  # Optionnel : ajoutez "assets: ['.env']" et créez .env (copie de .env.example) pour Supabase

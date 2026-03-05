@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
+import '../providers/auth_provider.dart';
+import '../providers/family_provider.dart';
 import '../providers/medication_provider.dart';
+import '../providers/shopping_provider.dart';
 import '../services/reminder_service.dart';
 import 'inventaire_screen.dart';
 import 'scan_screen.dart';
@@ -22,7 +25,21 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _rescheduleReminders());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _rescheduleReminders();
+      final auth = context.read<AuthProvider>();
+      final medicationProvider = context.read<MedicationProvider>();
+      final familyProvider = context.read<FamilyProvider>();
+      final shoppingProvider = context.read<ShoppingProvider>();
+      final familyId = auth.currentFamilyId;
+      if (familyId != null) {
+        await medicationProvider.loadWithSync(familyId);
+        if (!mounted) return;
+        await familyProvider.load();
+        if (!mounted) return;
+        await shoppingProvider.load();
+      }
+    });
   }
 
   Future<void> _rescheduleReminders() async {
