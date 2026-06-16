@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -10,6 +11,7 @@ import '../providers/auth_provider.dart';
 import '../providers/family_provider.dart';
 import '../providers/medication_provider.dart';
 import '../services/interactions_service.dart';
+import '../services/medication_api_service.dart';
 import '../theme/cocon_theme.dart';
 import '../widgets/cocon/cocon.dart';
 
@@ -49,6 +51,9 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
   late String _unite;
   List<String> _memberIds = [];
   String? _photoPath;
+  Timer? _nameDebounce;
+  List<MedicationApiResult> _suggestions = [];
+  bool _searchingName = false;
 
   bool get isEditing => widget.editing != null;
 
@@ -57,6 +62,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     super.initState();
     final e = widget.editing;
     _nomController = TextEditingController(text: e?.nom ?? widget.suggestedName ?? '');
+    _nomController.addListener(_onNameChanged);
     _quantiteController = TextEditingController(text: e?.quantite.toString() ?? '1');
     // Unité : édition > API (suggestedUnite) > forme pharmaceutique > défaut
     final uniteFromApi = widget.suggestedUnite != null && MedicationUnits.all.contains(widget.suggestedUnite)
@@ -78,12 +84,46 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
 
   @override
   void dispose() {
+    _nameDebounce?.cancel();
     _nomController.dispose();
     _quantiteController.dispose();
     _lieuController.dispose();
     _seuilController.dispose();
     _quantiteParUniteController.dispose();
     super.dispose();
+  }
+
+  void _onNameChanged() {
+    _nameDebounce?.cancel();
+    final query = _nomController.text;
+    if (query.trim().length < 3) {
+      setState(() => _suggestions = []);
+      return;
+    }
+    _nameDebounce = Timer(const Duration(milliseconds: 400), () async {
+      setState(() => _searchingName = true);
+      final results = await MedicationApiService().searchByName(query);
+      if (!mounted) return;
+      setState(() {
+        _suggestions = results;
+        _searchingName = false;
+      });
+    });
+  }
+
+  void _applySuggestion(MedicationApiResult r) {
+    _nameDebounce?.cancel();
+    _nomController.removeListener(_onNameChanged);
+    _nomController.text = r.nom;
+    _nomController.addListener(_onNameChanged);
+    if (r.suggestedUnite != null && MedicationUnits.all.contains(r.suggestedUnite)) {
+      setState(() => _unite = r.suggestedUnite!);
+    }
+    if (r.suggestedQuantiteParUnite != null) {
+      _quantiteParUniteController.text = r.suggestedQuantiteParUnite.toString();
+    }
+    setState(() => _suggestions = []);
+    FocusScope.of(context).unfocus();
   }
 
   Future<void> _save() async {
@@ -189,10 +229,50 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
               decoration: InputDecoration(
                 labelText: l10n.medicationName,
                 hintText: l10n.medicationNameHint,
+                suffixIcon: _searchingName
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                      )
+                    : null,
               ),
               textCapitalization: TextCapitalization.sentences,
               validator: (v) => v?.trim().isEmpty ?? true ? l10n.required : null,
             ),
+            if (_suggestions.isNotEmpty)
+              SoftCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < _suggestions.length; i++)
+                      InkWell(
+                        onTap: () => _applySuggestion(_suggestions[i]),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                          decoration: BoxDecoration(
+                            border: i < _suggestions.length - 1 ? const Border(bottom: BorderSide(color: CoconColors.line)) : null,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(_suggestions[i].nom, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    if (_suggestions[i].formePharmaceutique != null)
+                                      Text(_suggestions[i].formePharmaceutique!, style: const TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w600, fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.north_west, size: 16, color: CoconColors.muted),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 12),
             if (_photoPath != null) ...[
               Semantics(
