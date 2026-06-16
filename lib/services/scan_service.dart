@@ -35,11 +35,18 @@ class ScanService {
       cip = trimmed;
       suggestedName = 'Médicament CIP $trimmed';
     }
-    // GS1 peut commencer par (01) pour GTIN, etc.
-    else if (trimmed.contains('(01)')) {
-      final match = RegExp(r'\(01\)(\d{14})').firstMatch(trimmed);
-      if (match != null) gtin = match.group(1);
-      suggestedName = gtin != null ? 'Médicament $gtin' : null;
+    // CIP13 brut (code-barres simple, sans encodage GS1)
+    else if (RegExp(r'^\d{13}$').hasMatch(trimmed)) {
+      cip = trimmed;
+      suggestedName = 'Médicament CIP $trimmed';
+    }
+    // GS1 Data Matrix : AI(01) = GTIN-14, avec ou sans parenthèses autour de l'AI.
+    // Le GTIN-14 français = "0" + CIP13 -> on retire le zéro de tête.
+    else if (RegExp(r'01(\d{14})').firstMatch(trimmed.replaceAll(RegExp(r'[()]'), '')) != null) {
+      final gtinVal = RegExp(r'01(\d{14})').firstMatch(trimmed.replaceAll(RegExp(r'[()]'), ''))!.group(1)!;
+      gtin = gtinVal;
+      cip = gtinVal.startsWith('0') ? gtinVal.substring(1) : gtinVal;
+      suggestedName = 'Médicament CIP $cip';
     }
     // Autre: on garde le brut comme identifiant
     else {

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import '../data/dci_indications.dart';
 import '../l10n/app_localizations.dart';
 import '../models/medication.dart';
 import '../models/medication_units.dart';
@@ -21,6 +22,7 @@ class AddMedicationScreen extends StatefulWidget {
   final String? suggestedForme;
   final String? suggestedUnite;
   final int? suggestedQuantiteParUnite;
+  final String? suggestedDci;
   final String? noticeUrl;
   final Medication? editing;
 
@@ -31,6 +33,7 @@ class AddMedicationScreen extends StatefulWidget {
     this.suggestedForme,
     this.suggestedUnite,
     this.suggestedQuantiteParUnite,
+    this.suggestedDci,
     this.noticeUrl,
     this.editing,
   });
@@ -46,6 +49,10 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
   late TextEditingController _lieuController;
   late TextEditingController _seuilController;
   late TextEditingController _quantiteParUniteController;
+  late TextEditingController _dciController;
+  late TextEditingController _indicationController;
+  late TextEditingController _posologieController;
+  late TextEditingController _precautionsController;
   DateTime? _datePeremption;
   bool _saving = false;
   late String _unite;
@@ -80,6 +87,11 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     );
     _datePeremption = e?.datePeremption;
     _photoPath = e?.photoPath;
+    final dci = e?.dci ?? widget.suggestedDci;
+    _dciController = TextEditingController(text: dci ?? '');
+    _indicationController = TextEditingController(text: e?.indication ?? (e == null ? suggestIndicationFromDci(dci) ?? '' : ''));
+    _posologieController = TextEditingController(text: e?.posologie ?? '');
+    _precautionsController = TextEditingController(text: e?.precautions ?? '');
   }
 
   @override
@@ -90,6 +102,10 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     _lieuController.dispose();
     _seuilController.dispose();
     _quantiteParUniteController.dispose();
+    _dciController.dispose();
+    _indicationController.dispose();
+    _posologieController.dispose();
+    _precautionsController.dispose();
     super.dispose();
   }
 
@@ -122,6 +138,13 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     if (r.suggestedQuantiteParUnite != null) {
       _quantiteParUniteController.text = r.suggestedQuantiteParUnite.toString();
     }
+    if (r.dci != null) {
+      _dciController.text = r.dci!;
+      if (_indicationController.text.trim().isEmpty) {
+        final suggestion = suggestIndicationFromDci(r.dci);
+        if (suggestion != null) _indicationController.text = suggestion;
+      }
+    }
     setState(() => _suggestions = []);
     FocusScope.of(context).unfocus();
   }
@@ -141,6 +164,11 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     final quantiteParUnite = int.tryParse(_quantiteParUniteController.text);
     final lieu = _lieuController.text.trim().isEmpty ? null : _lieuController.text.trim();
     final seuil = int.tryParse(_seuilController.text) ?? 0;
+
+    final familyProvider = context.read<FamilyProvider>();
+    if (lieu != null && !familyProvider.places.any((p) => p.name.toLowerCase() == lieu.toLowerCase())) {
+      await familyProvider.addPlace(lieu);
+    }
 
     final familyId = context.read<AuthProvider>().currentFamilyId;
     final hasInteraction = await InteractionsService.hasPossibleInteraction(nom, familyId: familyId);
@@ -169,6 +197,11 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
       }
     }
 
+    final dci = _dciController.text.trim().isEmpty ? null : _dciController.text.trim();
+    final indication = _indicationController.text.trim().isEmpty ? null : _indicationController.text.trim();
+    final posologie = _posologieController.text.trim().isEmpty ? null : _posologieController.text.trim();
+    final precautions = _precautionsController.text.trim().isEmpty ? null : _precautionsController.text.trim();
+
     if (isEditing) {
       await provider.update(widget.editing!.copyWith(
         nom: nom,
@@ -180,6 +213,10 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
         datePeremption: _datePeremption,
         seuilAlerte: seuil,
         photoPath: _photoPath,
+        dci: dci,
+        indication: indication,
+        posologie: posologie,
+        precautions: precautions,
       ));
     } else {
       final familyId = context.read<AuthProvider>().currentFamilyId;
@@ -196,6 +233,10 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
           seuilAlerte: seuil,
           noticeUrl: widget.noticeUrl,
           photoPath: _photoPath,
+          dci: dci,
+          indication: indication,
+          posologie: posologie,
+          precautions: precautions,
         ),
         familyId: familyId,
       );
@@ -358,6 +399,14 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
               ),
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _dciController,
+              decoration: const InputDecoration(
+                labelText: 'Substance (DCI)',
+                hintText: 'ex. Paracétamol',
+              ),
+            ),
             if (familyProvider.members.isNotEmpty) ...[
               const SizedBox(height: 16),
               Text(l10n.forWhom, style: const TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w800, fontSize: 12.5)),
@@ -442,6 +491,28 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                 onPressed: () => setState(() => _datePeremption = null),
                 child: Text(l10n.removeDate),
               ),
+            const SizedBox(height: 24),
+            const Text('Infos santé', style: TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w800, fontSize: 12.5)),
+            const SizedBox(height: 7),
+            TextFormField(
+              controller: _indicationController,
+              decoration: const InputDecoration(
+                labelText: 'À quoi ça sert',
+                hintText: 'ex. maux de tête, fièvre, antibiotique...',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _posologieController,
+              decoration: const InputDecoration(labelText: 'Posologie'),
+              maxLines: 2,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _precautionsController,
+              decoration: const InputDecoration(labelText: 'Effets secondaires / précautions'),
+              maxLines: 3,
+            ),
             const SizedBox(height: 32),
             PrimaryButton(
               label: l10n.save,

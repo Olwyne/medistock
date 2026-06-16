@@ -15,6 +15,10 @@ class Medication {
   final int seuilAlerte;
   final String? noticeUrl;
   final String? photoPath;
+  final String? dci; // substance(s) active(s) / ingrédient
+  final String? indication; // à quoi ça sert (maux de tête, antibiotique...)
+  final String? posologie;
+  final String? precautions; // effets secondaires / précautions d'usage
 
   const Medication({
     this.id,
@@ -29,6 +33,10 @@ class Medication {
     this.seuilAlerte = 0,
     this.noticeUrl,
     this.photoPath,
+    this.dci,
+    this.indication,
+    this.posologie,
+    this.precautions,
   });
 
   Medication copyWith({
@@ -44,6 +52,10 @@ class Medication {
     int? seuilAlerte,
     String? noticeUrl,
     String? photoPath,
+    String? dci,
+    String? indication,
+    String? posologie,
+    String? precautions,
   }) {
     return Medication(
       id: id ?? this.id,
@@ -58,6 +70,10 @@ class Medication {
       seuilAlerte: seuilAlerte ?? this.seuilAlerte,
       noticeUrl: noticeUrl ?? this.noticeUrl,
       photoPath: photoPath ?? this.photoPath,
+      dci: dci ?? this.dci,
+      indication: indication ?? this.indication,
+      posologie: posologie ?? this.posologie,
+      precautions: precautions ?? this.precautions,
     );
   }
 
@@ -74,6 +90,10 @@ class Medication {
       'seuilAlerte': seuilAlerte,
       'noticeUrl': noticeUrl,
       'photoPath': photoPath,
+      'dci': dci,
+      'indication': indication,
+      'posologie': posologie,
+      'precautions': precautions,
     };
   }
 
@@ -92,6 +112,10 @@ class Medication {
       seuilAlerte: data['seuilAlerte'] as int? ?? 0,
       noticeUrl: data['noticeUrl'] as String?,
       photoPath: data['photoPath'] as String?,
+      dci: data['dci'] as String?,
+      indication: data['indication'] as String?,
+      posologie: data['posologie'] as String?,
+      precautions: data['precautions'] as String?,
     );
   }
 

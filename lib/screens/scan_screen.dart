@@ -93,26 +93,31 @@ class _ScanScreenState extends State<ScanScreen> {
     final existing = await provider.getByCode(raw);
     if (existing != null) {
       if (!mounted) return;
-      final add = await showDialog<bool>(
+      final peremptionExistante = existing.datePeremption != null
+          ? ' (péremption actuelle : ${existing.datePeremption!.day}/${existing.datePeremption!.month}/${existing.datePeremption!.year})'
+          : '';
+      final choice = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(existing.nom),
-          content: const Text(
-            'Ce médicament est déjà dans l\'inventaire. Voulez-vous ajouter une quantité au stock ?',
-          ),
+          content: Text('Ce médicament est déjà dans l\'inventaire$peremptionExistante. Que voulez-vous faire ?'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Non'),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'new'),
+              child: const Text('Nouvel article (date différente)'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Oui, ajouter au stock'),
+              onPressed: () => Navigator.pop(ctx, 'stock'),
+              child: const Text('Ajouter au stock existant'),
             ),
           ],
         ),
       );
-      if (add == true && mounted) {
+      if (choice == 'stock' && mounted) {
         await provider.addStock(existing.id, 1);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -121,8 +126,28 @@ class _ScanScreenState extends State<ScanScreen> {
             behavior: SnackBarBehavior.floating,
           ),
         );
+        setState(() => _hasScanned = false);
+        return;
       }
-      setState(() => _hasScanned = false);
+      if (choice == 'new' && mounted) {
+        final added = await Navigator.of(context).push<bool>(
+          MaterialPageRoute(
+            builder: (_) => AddMedicationScreen(
+              codeScanned: raw,
+              suggestedName: existing.nom,
+              suggestedUnite: existing.unite,
+              suggestedQuantiteParUnite: existing.quantiteParUnite,
+              suggestedDci: existing.dci,
+            ),
+          ),
+        );
+        if (mounted && added == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Médicament ajouté à l\'inventaire'), behavior: SnackBarBehavior.floating),
+          );
+        }
+      }
+      if (mounted) setState(() => _hasScanned = false);
       return;
     }
 
@@ -132,9 +157,11 @@ class _ScanScreenState extends State<ScanScreen> {
     String? suggestedForme;
     String? suggestedUnite;
     int? suggestedQuantiteParUnite;
+    String? suggestedDci;
     bool apiFailed = false;
-    if (result.cip != null || RegExp(r'^\d{7,13}$').hasMatch(raw.trim())) {
-      final lookup = await MedicationApiService().lookupByCip(raw);
+    final cipToLookup = result.cip ?? (RegExp(r'^\d{7,13}$').hasMatch(raw.trim()) ? raw.trim() : null);
+    if (cipToLookup != null) {
+      final lookup = await MedicationApiService().lookupByCip(cipToLookup);
       if (!mounted) return;
       if (lookup.error != null) {
         apiFailed = true;
@@ -150,6 +177,7 @@ class _ScanScreenState extends State<ScanScreen> {
         suggestedForme = lookup.data!.formePharmaceutique;
         suggestedUnite = lookup.data!.suggestedUnite;
         suggestedQuantiteParUnite = lookup.data!.suggestedQuantiteParUnite;
+        suggestedDci = lookup.data!.dci;
       }
     }
     if (!mounted) return;
@@ -173,6 +201,7 @@ class _ScanScreenState extends State<ScanScreen> {
           suggestedForme: suggestedForme,
           suggestedUnite: suggestedUnite,
           suggestedQuantiteParUnite: suggestedQuantiteParUnite,
+          suggestedDci: suggestedDci,
           noticeUrl: result.noticeUrl,
         ),
       ),

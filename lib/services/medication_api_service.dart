@@ -4,18 +4,20 @@ import 'package:http/http.dart' as http;
 /// Base de l'API BDPM (data.gouv.fr / medicaments-api.giygas.dev).
 const _baseUrl = 'https://medicaments-api.giygas.dev';
 
-/// Résultat de la recherche par CIP : nom, forme, unité et quantité suggérées.
+/// Résultat de la recherche par CIP : nom, forme, unité, quantité et substance(s) suggérées.
 class MedicationApiResult {
   final String nom;
   final String? formePharmaceutique;
   final String? suggestedUnite;
   final int? suggestedQuantiteParUnite;
+  final String? dci;
 
   const MedicationApiResult({
     required this.nom,
     this.formePharmaceutique,
     this.suggestedUnite,
     this.suggestedQuantiteParUnite,
+    this.dci,
   });
 }
 
@@ -152,11 +154,26 @@ class MedicationApiService {
     if (suggestedUnite == null && forme != null) {
       suggestedUnite = _uniteFromForme(forme);
     }
+
+    final composition = obj['composition'] as List<dynamic>?;
+    String? dci;
+    if (composition != null && composition.isNotEmpty) {
+      final substances = composition
+          .whereType<Map<String, dynamic>>()
+          .map((c) => c['denominationSubstance'] as String?)
+          .whereType<String>()
+          .where((s) => s.isNotEmpty)
+          .toSet()
+          .toList();
+      if (substances.isNotEmpty) dci = substances.join(' + ');
+    }
+
     return MedicationApiResult(
       nom: nom.trim(),
       formePharmaceutique: forme?.trim(),
       suggestedUnite: suggestedUnite,
       suggestedQuantiteParUnite: suggestedQuantiteParUnite,
+      dci: dci,
     );
   }
 

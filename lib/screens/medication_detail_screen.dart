@@ -196,9 +196,39 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
                       _InfoCell(label: l10n.expiry, value: m.datePeremption != null ? DateFormat.yMMMd('fr').format(m.datePeremption!) : l10n.notSet),
                       if (m.lieu != null && m.lieu!.isNotEmpty) _InfoCell(label: l10n.place, value: m.lieu!),
                       _InfoCell(label: l10n.unit, value: m.unite),
+                      if (m.dci != null && m.dci!.isNotEmpty) _InfoCell(label: 'Substance (DCI)', value: m.dci!),
                     ],
                   ),
                   const SizedBox(height: 16),
+
+                  if (m.indication != null || m.posologie != null || m.precautions != null) ...[
+                    SoftCard(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (m.indication != null && m.indication!.isNotEmpty) ...[
+                            const Text('À quoi ça sert', style: TextStyle(fontFamily: 'Quicksand', fontWeight: FontWeight.w700, fontSize: 14, color: CoconColors.ink)),
+                            const SizedBox(height: 4),
+                            Text(m.indication!, style: const TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w600, fontSize: 13.5, height: 1.4)),
+                          ],
+                          if (m.posologie != null && m.posologie!.isNotEmpty) ...[
+                            if (m.indication != null && m.indication!.isNotEmpty) const SizedBox(height: 12),
+                            const Text('Posologie', style: TextStyle(fontFamily: 'Quicksand', fontWeight: FontWeight.w700, fontSize: 14, color: CoconColors.ink)),
+                            const SizedBox(height: 4),
+                            Text(m.posologie!, style: const TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w600, fontSize: 13.5, height: 1.4)),
+                          ],
+                          if (m.precautions != null && m.precautions!.isNotEmpty) ...[
+                            if (m.indication != null || m.posologie != null) const SizedBox(height: 12),
+                            const Text('Effets secondaires / précautions', style: TextStyle(fontFamily: 'Quicksand', fontWeight: FontWeight.w700, fontSize: 14, color: CoconColors.ink)),
+                            const SizedBox(height: 4),
+                            Text(m.precautions!, style: const TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w600, fontSize: 13.5, height: 1.4)),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
 
                   SoftCard(
                     padding: const EdgeInsets.all(16),

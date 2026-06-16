@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
@@ -8,6 +9,7 @@ import '../providers/shopping_provider.dart';
 import '../services/reminder_service.dart';
 import '../theme/cocon_theme.dart';
 import '../widgets/cocon/cocon.dart';
+import 'add_medication_screen.dart';
 import 'alertes_screen.dart';
 import 'dashboard_screen.dart';
 import 'inventaire_screen.dart';
@@ -64,7 +66,11 @@ class _HomeScreenState extends State<HomeScreen> {
   void _goTo(int i) => setState(() => _index = i);
 
   void _openScan() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ScanScreen()));
+    // Le scan caméra repose sur l'API navigateur BarcodeDetector, non supportée sur
+    // le web (PWA) -> on saute direct à la saisie manuelle plutôt que sur un écran
+    // de scan qui ne détectera jamais rien.
+    final screen = kIsWeb ? const AddMedicationScreen() : const ScanScreen();
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
   }
 
   List<Widget> _screens() => [
