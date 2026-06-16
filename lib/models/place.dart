@@ -1,13 +1,13 @@
 class Place {
-  final int id;
+  final String id;
   final String name;
 
   const Place({required this.id, required this.name});
 
-  Map<String, dynamic> toMap() => {'id': id, 'name': name};
+  Map<String, dynamic> toFirestore() => {'name': name};
 
-  factory Place.fromMap(Map<String, dynamic> m) => Place(
-        id: m['id'] as int,
-        name: m['name'] as String,
+  factory Place.fromFirestore(String id, Map<String, dynamic> data) => Place(
+        id: id,
+        name: data['name'] as String,
       );
 }

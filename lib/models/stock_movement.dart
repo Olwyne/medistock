@@ -1,13 +1,15 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 /// Type de mouvement de stock.
 enum StockMovementType {
   ajout,
   prise,
 }
 
-/// Un mouvement de stock (ajout ou prise).
+/// Un mouvement de stock (ajout ou prise), sous-collection d'un médicament.
 class StockMovement {
-  final int? id;
-  final int medicationId;
+  final String? id;
+  final String medicationId;
   final StockMovementType type;
   final int quantite;
   final DateTime date;
@@ -20,23 +22,23 @@ class StockMovement {
     required this.date,
   });
 
-  Map<String, dynamic> toMap() {
+  /// `familyId` est dénormalisé dans le doc pour permettre la collectionGroup query des stats.
+  Map<String, dynamic> toFirestore({required String familyId}) {
     return {
-      'id': id,
-      'medication_id': medicationId,
+      'familyId': familyId,
       'type': type == StockMovementType.ajout ? 'ajout' : 'prise',
       'quantite': quantite,
-      'date': date.toIso8601String(),
+      'date': Timestamp.fromDate(date),
     };
   }
 
-  factory StockMovement.fromMap(Map<String, dynamic> map) {
+  factory StockMovement.fromFirestore(String id, String medicationId, Map<String, dynamic> data) {
     return StockMovement(
-      id: map['id'] as int?,
-      medicationId: map['medication_id'] as int,
-      type: map['type'] == 'ajout' ? StockMovementType.ajout : StockMovementType.prise,
-      quantite: map['quantite'] as int,
-      date: DateTime.parse(map['date'] as String),
+      id: id,
+      medicationId: medicationId,
+      type: data['type'] == 'ajout' ? StockMovementType.ajout : StockMovementType.prise,
+      quantite: data['quantite'] as int,
+      date: (data['date'] as Timestamp).toDate(),
     );
   }
 }

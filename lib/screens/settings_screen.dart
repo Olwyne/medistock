@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -14,8 +13,10 @@ import '../providers/settings_provider.dart';
 import '../providers/shopping_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/backup_service.dart';
-import '../data/database.dart';
+import '../data/firestore_repository.dart';
 import '../services/pdf_export_service.dart';
+import '../theme/cocon_theme.dart';
+import '../widgets/cocon/cocon.dart';
 import 'stats_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -25,120 +26,130 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.settingsTitle),
-      ),
-      body: FutureBuilder<void>(
-        future: context.read<SettingsProvider>().load(),
-        builder: (context, _) {
-          return Consumer6<AuthProvider, SettingsProvider, LocaleProvider, ThemeProvider, FamilyProvider, MedicationProvider>(
-            builder: (context, authProvider, settings, localeProvider, themeProvider, familyProvider, medicationProvider, _) {
-              return ListView(
-                children: [
-                  if (authProvider.isConfigured && authProvider.isSignedIn) ...[
-                    ListTile(
-                      leading: const Icon(Icons.account_circle),
-                      title: Text(authProvider.userEmail ?? 'Compte'),
-                      subtitle: const Text('Foyer synchronisé'),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.logout),
-                      title: const Text('Déconnexion'),
-                      onTap: () async {
-                        await authProvider.signOut();
-                      },
-                    ),
-                    const Divider(),
-                  ],
-                  ListTile(
-                    leading: const Icon(Icons.language),
-                    title: Text(l10n.language),
-                    subtitle: Text(
-                      localeProvider.locale == null
-                          ? '${l10n.french} / ${l10n.english}'
-                          : localeProvider.locale!.languageCode == 'fr'
-                              ? l10n.french
-                              : l10n.english,
-                    ),
-                    onTap: () => _showLanguagePicker(context, localeProvider),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.calendar_today),
-                    title: Text(l10n.firstDayOfWeek),
-                    subtitle: Text(
-                      settings.firstDayOfWeek == 0 ? l10n.sunday : l10n.monday,
-                    ),
-                    onTap: () => _showFirstDayPicker(context, settings),
-                  ),
-                  SwitchListTile(
-                    secondary: const Icon(Icons.volume_up),
-                    title: Text(l10n.scanSound),
-                    value: settings.scanSound,
-                    onChanged: (v) => settings.setScanSound(v),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.brightness_6),
-                    title: Text(l10n.theme),
-                    subtitle: Text(
-                      themeProvider.themeMode == ThemeMode.system
-                          ? l10n.themeSystem
-                          : themeProvider.themeMode == ThemeMode.light
-                              ? l10n.themeLight
-                              : l10n.themeDark,
-                    ),
-                    onTap: () => _showThemePicker(context, themeProvider),
-                  ),
-                  const Divider(),
-                  ListTile(
-                    leading: const Icon(Icons.people),
-                    title: Text(l10n.family),
-                    onTap: () => _showFamilySection(context, familyProvider),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.place),
-                    title: Text(l10n.places),
-                    onTap: () => _showPlacesSection(context, familyProvider),
-                  ),
-                  if (!kIsWeb) ...[
-                    ListTile(
-                      leading: const Icon(Icons.health_and_safety_outlined),
-                      title: Text(l10n.health),
-                      subtitle: Text(l10n.allergies),
-                      onTap: () => _showHealthSection(context, familyProvider),
-                    ),
-                  ],
-                  ListTile(
-                    leading: const Icon(Icons.bar_chart),
-                    title: Text(l10n.statsTitle),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const StatsScreen()),
-                    ),
-                  ),
-                  if (!kIsWeb) ...[
-                    const Divider(),
-                    ListTile(
-                      leading: const Icon(Icons.save_alt),
-                      title: Text(l10n.backup),
-                      onTap: () => _doBackup(context),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.restore),
-                      title: Text(l10n.restore),
-                      onTap: () => _doRestore(context),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.picture_as_pdf),
-                      title: Text(l10n.exportPdfDoctor),
-                      onTap: () => _doExportPdf(context, medicationProvider, familyProvider),
-                    ),
-                  ],
-                ],
-              );
-            },
-          );
-        },
+      backgroundColor: CoconColors.bg,
+      body: Column(
+        children: [
+          CoconScreenHeader(title: l10n.settingsTitle, onBack: () => Navigator.of(context).pop()),
+          Expanded(
+            child: FutureBuilder<void>(
+              future: context.read<SettingsProvider>().load(),
+              builder: (context, _) {
+                return Consumer6<AuthProvider, SettingsProvider, LocaleProvider, ThemeProvider, FamilyProvider, MedicationProvider>(
+                  builder: (context, authProvider, settings, localeProvider, themeProvider, familyProvider, medicationProvider, _) {
+                    return ListView(
+                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 30),
+                      children: [
+                        _SectionLabel(l10n.signIn),
+                        _GroupCard(children: [
+                          _SettingsRow(
+                            icon: Icons.account_circle_outlined,
+                            title: authProvider.userName?.isNotEmpty == true ? authProvider.userName! : (authProvider.userEmail ?? 'Compte'),
+                            subtitle: authProvider.userName?.isNotEmpty == true ? authProvider.userEmail : l10n.accountSynced,
+                            onTap: () => _showEditNameDialog(context, authProvider),
+                          ),
+                          _SettingsRow(
+                            icon: Icons.logout,
+                            iconColor: CoconColors.status[MedStatus.perime]!.fg,
+                            iconBg: CoconColors.status[MedStatus.perime]!.bg,
+                            title: l10n.signOut,
+                            danger: true,
+                            onTap: () async => authProvider.signOut(),
+                            last: true,
+                          ),
+                        ]),
+                        const SizedBox(height: 20),
+                        _SectionLabel(l10n.theme),
+                        _GroupCard(children: [
+                          _SettingsRow(
+                            icon: Icons.language,
+                            title: l10n.language,
+                            subtitle: localeProvider.locale == null
+                                ? '${l10n.french} / ${l10n.english}'
+                                : localeProvider.locale!.languageCode == 'fr'
+                                    ? l10n.french
+                                    : l10n.english,
+                            onTap: () => _showLanguagePicker(context, localeProvider),
+                          ),
+                          _SettingsRow(
+                            icon: Icons.calendar_today_outlined,
+                            title: l10n.firstDayOfWeek,
+                            subtitle: settings.firstDayOfWeek == 0 ? l10n.sunday : l10n.monday,
+                            onTap: () => _showFirstDayPicker(context, settings),
+                          ),
+                          _SettingsRow(
+                            icon: Icons.volume_up_outlined,
+                            title: l10n.scanSound,
+                            trailing: Switch(value: settings.scanSound, onChanged: (v) => settings.setScanSound(v)),
+                          ),
+                          _SettingsRow(
+                            icon: Icons.brightness_6_outlined,
+                            title: l10n.theme,
+                            subtitle: themeProvider.themeMode == ThemeMode.system
+                                ? l10n.themeSystem
+                                : themeProvider.themeMode == ThemeMode.light
+                                    ? l10n.themeLight
+                                    : l10n.themeDark,
+                            onTap: () => _showThemePicker(context, themeProvider),
+                            last: true,
+                          ),
+                        ]),
+                        const SizedBox(height: 20),
+                        _SectionLabel(l10n.household),
+                        _GroupCard(children: [
+                          _SettingsRow(icon: Icons.people_outline, title: l10n.family, onTap: () => _showFamilySection(context, familyProvider)),
+                          _SettingsRow(icon: Icons.place_outlined, title: l10n.places, onTap: () => _showPlacesSection(context, familyProvider)),
+                          _SettingsRow(icon: Icons.health_and_safety_outlined, title: l10n.health, subtitle: l10n.allergies, onTap: () => _showHealthSection(context, familyProvider)),
+                          _SettingsRow(
+                            icon: Icons.bar_chart_outlined,
+                            title: l10n.statsTitle,
+                            last: true,
+                            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StatsScreen())),
+                          ),
+                        ]),
+                        const SizedBox(height: 20),
+                        _SectionLabel(l10n.backupRestore),
+                        _GroupCard(children: [
+                          _SettingsRow(icon: Icons.save_alt_outlined, title: l10n.backup, onTap: () => _doBackup(context, authProvider.currentFamilyId)),
+                          _SettingsRow(icon: Icons.restore_outlined, title: l10n.restore, onTap: () => _doRestore(context, authProvider.currentFamilyId)),
+                          _SettingsRow(icon: Icons.picture_as_pdf_outlined, title: l10n.exportPdfDoctor, last: true, onTap: () => _doExportPdf(context, medicationProvider, familyProvider)),
+                        ]),
+                        const SizedBox(height: 20),
+                        Center(child: Text('Medistock · version 1.0.0', style: const TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w600, fontSize: 12))),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  Future<void> _showEditNameDialog(BuildContext context, AuthProvider authProvider) async {
+    final l10n = AppLocalizations.of(context);
+    final controller = TextEditingController(text: authProvider.userName ?? '');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Prénom'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(labelText: 'Prénom'),
+          onSubmitted: (_) => Navigator.pop(ctx, controller.text.trim()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l10n.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: Text(l10n.save)),
+        ],
+      ),
+    );
+    if (name != null && name.isNotEmpty) {
+      await authProvider.updateDisplayName(name);
+    }
   }
 
   void _showHealthSection(BuildContext context, FamilyProvider familyProvider) async {
@@ -194,42 +205,43 @@ class SettingsScreen extends StatelessWidget {
               ),
             ],
           ),
-          body: ListView.builder(
-            itemCount: familyProvider.members.length,
-            itemBuilder: (context, i) {
-              final m = familyProvider.members[i];
-              return ListTile(
-                title: Text(m.name),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () async {
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (c) => AlertDialog(
-                        title: Text(l10n.deleteConfirm),
-                        content: Text('${m.name} ?'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(c, false),
-                            child: Text(l10n.cancel),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.pop(c, true),
-                            child: Text(l10n.delete),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (confirm == true) await familyProvider.deleteMember(m.id);
-                  },
-                ),
-              );
-            },
+          body: Consumer<FamilyProvider>(
+            builder: (context, familyProvider, _) => ListView.builder(
+              itemCount: familyProvider.members.length,
+              itemBuilder: (context, i) {
+                final m = familyProvider.members[i];
+                return ListTile(
+                  title: Text(m.name),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (c) => AlertDialog(
+                          title: Text(l10n.deleteConfirm),
+                          content: Text('${m.name} ?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(c, false),
+                              child: Text(l10n.cancel),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.pop(c, true),
+                              child: Text(l10n.delete),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) await familyProvider.deleteMember(m.id);
+                    },
+                  ),
+                );
+              },
+            ),
           ),
         ),
       ),
     );
-    familyProvider.load();
   }
 
   void _showPlacesSection(BuildContext context, FamilyProvider familyProvider) async {
@@ -277,42 +289,43 @@ class SettingsScreen extends StatelessWidget {
               ),
             ],
           ),
-          body: ListView.builder(
-            itemCount: familyProvider.places.length,
-            itemBuilder: (context, i) {
-              final p = familyProvider.places[i];
-              return ListTile(
-                title: Text(p.name),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () async {
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (c) => AlertDialog(
-                        title: Text(l10n.deleteConfirm),
-                        content: Text('${p.name} ?'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(c, false),
-                            child: Text(l10n.cancel),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.pop(c, true),
-                            child: Text(l10n.delete),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (confirm == true) await familyProvider.deletePlace(p.id);
-                  },
-                ),
-              );
-            },
+          body: Consumer<FamilyProvider>(
+            builder: (context, familyProvider, _) => ListView.builder(
+              itemCount: familyProvider.places.length,
+              itemBuilder: (context, i) {
+                final p = familyProvider.places[i];
+                return ListTile(
+                  title: Text(p.name),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (c) => AlertDialog(
+                          title: Text(l10n.deleteConfirm),
+                          content: Text('${p.name} ?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(c, false),
+                              child: Text(l10n.cancel),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.pop(c, true),
+                              child: Text(l10n.delete),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) await familyProvider.deletePlace(p.id);
+                    },
+                  ),
+                );
+              },
+            ),
           ),
         ),
       ),
     );
-    familyProvider.load();
   }
 
   void _showLanguagePicker(BuildContext context, LocaleProvider localeProvider) {
@@ -437,10 +450,11 @@ class SettingsScreen extends StatelessWidget {
     }
   }
 
-  Future<void> _doBackup(BuildContext context) async {
+  Future<void> _doBackup(BuildContext context, String? familyId) async {
     final l10n = AppLocalizations.of(context);
+    if (familyId == null) return;
     try {
-      final path = await BackupService.exportToFile();
+      final path = await BackupService.exportToFile(familyId);
       await Share.shareXFiles([XFile(path)], text: l10n.shoppingTitle);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -456,8 +470,9 @@ class SettingsScreen extends StatelessWidget {
     }
   }
 
-  Future<void> _doRestore(BuildContext context) async {
+  Future<void> _doRestore(BuildContext context, String? familyId) async {
     final l10n = AppLocalizations.of(context);
+    if (familyId == null) return;
     final result = await FilePicker.platform.pickFiles(type: FileType.any, allowMultiple: false);
     if (result == null || result.files.single.path == null) return;
     if (!context.mounted) return;
@@ -499,7 +514,7 @@ class SettingsScreen extends StatelessWidget {
       final settings = context.read<SettingsProvider>();
       final locale = context.read<LocaleProvider>();
       final messenger = ScaffoldMessenger.maybeOf(context);
-      await BackupService.importFromMap(data);
+      await BackupService.importFromMap(familyId, data);
       await med.load();
       await fam.load();
       await shop.load();
@@ -518,6 +533,89 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
+class _SectionLabel extends StatelessWidget {
+  final String label;
+  const _SectionLabel(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 6, bottom: 9),
+      child: Text(label.toUpperCase(), style: const TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w800, fontSize: 12, letterSpacing: 0.6)),
+    );
+  }
+}
+
+class _GroupCard extends StatelessWidget {
+  final List<Widget> children;
+  const _GroupCard({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return SoftCard(padding: EdgeInsets.zero, child: Column(children: children));
+  }
+}
+
+class _SettingsRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final VoidCallback? onTap;
+  final Widget? trailing;
+  final Color? iconColor;
+  final Color? iconBg;
+  final bool danger;
+  final bool last;
+
+  const _SettingsRow({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.onTap,
+    this.trailing,
+    this.iconColor,
+    this.iconBg,
+    this.danger = false,
+    this.last = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(border: last ? null : const Border(bottom: BorderSide(color: CoconColors.line))),
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(color: iconBg ?? CoconColors.sunk, borderRadius: BorderRadius.circular(10)),
+                alignment: Alignment.center,
+                child: Icon(icon, size: 19, color: iconColor ?? CoconColors.ink),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: danger ? CoconColors.status[MedStatus.perime]!.fg : CoconColors.ink)),
+                    if (subtitle != null) Text(subtitle!, style: const TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w600, fontSize: 12.5)),
+                  ],
+                ),
+              ),
+              trailing ?? (onTap != null ? const Icon(Icons.chevron_right, size: 18, color: CoconColors.muted) : const SizedBox.shrink()),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _AllergiesScreen extends StatefulWidget {
   final FamilyProvider familyProvider;
 
@@ -532,7 +630,8 @@ class _AllergiesScreenState extends State<_AllergiesScreen> {
   bool _loadStarted = false;
 
   Future<void> _load(String? familyId) async {
-    final list = await AppDatabase.getAllergies(familyId: familyId);
+    if (familyId == null) return;
+    final list = await FirestoreRepository.getAllergies(familyId);
     if (mounted) setState(() => _allergies = list);
   }
 
@@ -558,7 +657,7 @@ class _AllergiesScreenState extends State<_AllergiesScreen> {
             icon: const Icon(Icons.add),
             onPressed: () async {
               final controller = TextEditingController();
-              int? selectedMemberId;
+              String? selectedMemberId;
               final result = await showDialog<bool>(
                 context: context,
                 builder: (ctx) => StatefulBuilder(
@@ -577,16 +676,15 @@ class _AllergiesScreenState extends State<_AllergiesScreen> {
                         ),
                         if (widget.familyProvider.members.isNotEmpty) ...[
                           const SizedBox(height: 12),
-                          DropdownButtonFormField<int?>(
+                          DropdownButtonFormField<String?>(
                             value: selectedMemberId,
                             decoration: InputDecoration(
                               labelText: l10n.family,
-                              border: const OutlineInputBorder(),
                             ),
                             items: [
-                              const DropdownMenuItem<int?>(value: null, child: Text('–')),
+                              const DropdownMenuItem<String?>(value: null, child: Text('–')),
                               ...widget.familyProvider.members.map(
-                                (m) => DropdownMenuItem<int?>(value: m.id, child: Text(m.name)),
+                                (m) => DropdownMenuItem<String?>(value: m.id, child: Text(m.name)),
                               ),
                             ],
                             onChanged: (v) => setDialogState(() => selectedMemberId = v),
@@ -609,12 +707,14 @@ class _AllergiesScreenState extends State<_AllergiesScreen> {
               );
               if (result == true && controller.text.trim().isNotEmpty) {
                 final familyId = context.read<AuthProvider>().currentFamilyId;
-                await AppDatabase.insertAllergy(
-                  memberId: selectedMemberId,
-                  allergyText: controller.text.trim(),
-                  familyId: familyId,
-                );
-                if (context.mounted) await _load(familyId);
+                if (familyId != null) {
+                  await FirestoreRepository.insertAllergy(
+                    familyId,
+                    memberId: selectedMemberId,
+                    allergyText: controller.text.trim(),
+                  );
+                  if (context.mounted) await _load(familyId);
+                }
               }
             },
           ),
@@ -627,9 +727,9 @@ class _AllergiesScreenState extends State<_AllergiesScreen> {
               itemCount: _allergies.length,
               itemBuilder: (context, i) {
                 final a = _allergies[i];
-                final id = a['id'] as int;
+                final id = a['id'] as String;
                 final text = a['allergy_text'] as String? ?? '';
-                final memberId = a['member_id'] as int?;
+                final memberId = a['member_id'] as String?;
                 final memberName = memberId != null
                     ? widget.familyProvider.members.where((m) => m.id == memberId).map((m) => m.name).join(', ')
                     : '';
@@ -642,8 +742,10 @@ class _AllergiesScreenState extends State<_AllergiesScreen> {
                       icon: const Icon(Icons.delete_outline),
                       onPressed: () async {
                         final familyId = context.read<AuthProvider>().currentFamilyId;
-                        await AppDatabase.deleteAllergy(id);
-                        if (context.mounted) await _load(familyId);
+                        if (familyId != null) {
+                          await FirestoreRepository.deleteAllergy(familyId, id);
+                          if (context.mounted) await _load(familyId);
+                        }
                       },
                     ),
                   ),

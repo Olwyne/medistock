@@ -1,18 +1,15 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
-import '../core/env_config.dart';
 
 const _keyCurrentFamilyId = 'current_family_id';
 
-/// Service d'authentification et de gestion de la famille courante.
+/// Service d'authentification (Firebase Auth) et de gestion de la famille courante (Firestore).
 class AuthService {
-  AuthService() : _client = EnvConfig.isConfigured ? Supabase.instance.client : null;
+  FirebaseAuth get _auth => FirebaseAuth.instance;
+  FirebaseFirestore get _db => FirebaseFirestore.instance;
 
-  final SupabaseClient? _client;
-
-  User? get currentUser => _client?.auth.currentUser;
-  Session? get currentSession => _client?.auth.currentSession;
+  User? get currentUser => _auth.currentUser;
   bool get isSignedIn => currentUser != null;
 
   /// Récupère l'ID de la famille courante (stocké localement).
@@ -31,85 +28,90 @@ class AuthService {
     }
   }
 
-  /// Vérifie si l'utilisateur a au moins une famille (présence dans family_users).
-  Future<bool> hasFamily() async {
-    if (_client == null || currentUser == null) return false;
-    final res = await _client
-        .from('family_users')
-        .select('id')
-        .eq('user_id', currentUser!.id)
-        .limit(1)
-        .maybeSingle();
-    return res != null;
-  }
-
   /// Liste des familles de l'utilisateur (id, name).
   Future<List<Map<String, dynamic>>> getFamilies() async {
-    if (_client == null || currentUser == null) return [];
-    final list = await _client
-        .from('family_users')
-        .select('family_id, families(id, name)')
-        .eq('user_id', currentUser!.id);
+    if (currentUser == null) return [];
+    final snap = await _db.collectionGroup('acl').where('uid', isEqualTo: currentUser!.uid).get();
     final result = <Map<String, dynamic>>[];
-    for (final row in list) {
-      final fam = row['families'];
-      if (fam is Map<String, dynamic>) {
-        result.add({
-          'id': fam['id'],
-          'name': fam['name'] as String? ?? '',
-        });
-      }
+    for (final doc in snap.docs) {
+      final familyRef = doc.reference.parent.parent!;
+      final familyDoc = await familyRef.get();
+      result.add({
+        'id': familyRef.id,
+        'name': familyDoc.data()?['name'] as String? ?? '',
+      });
     }
     return result;
   }
 
-  /// Crée une nouvelle famille et y ajoute l'utilisateur comme owner.
-  Future<String> createFamily({String? name}) async {
-    if (_client == null || currentUser == null) throw Exception('Non connecté');
-    final family = await _client.from('families').insert({
-      'name': name ?? 'Ma famille',
-    }).select('id').single();
-    final familyId = family['id'] as String;
-    await _client.from('family_users').insert({
-      'family_id': familyId,
-      'user_id': currentUser!.id,
-      'role': 'owner',
-    });
-    await setCurrentFamilyId(familyId);
-    return familyId;
+  /// Nom affiché de l'utilisateur, à défaut la partie locale de son email.
+  String _selfDisplayName(User user) {
+    final name = user.displayName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    final email = user.email ?? '';
+    final local = email.split('@').first;
+    return local.isEmpty ? 'Moi' : local[0].toUpperCase() + local.substring(1);
   }
 
-  /// Rejoint une famille par son ID (si l'utilisateur a été invité ou si lien public).
-  /// Pour l'instant on suppose que l'utilisateur fournit l'UUID de la famille (partagé hors app).
+  /// Crée une nouvelle famille, y ajoute l'utilisateur comme owner et comme membre par défaut.
+  Future<String> createFamily({String? name}) async {
+    final user = currentUser;
+    if (user == null) throw Exception('Non connecté');
+    final familyRef = _db.collection('families').doc();
+    final batch = _db.batch();
+    batch.set(familyRef, {'name': name ?? 'Ma famille', 'createdAt': Timestamp.now()});
+    batch.set(familyRef.collection('acl').doc(user.uid), {'uid': user.uid, 'role': 'owner'});
+    batch.set(familyRef.collection('members').doc(user.uid), {'name': _selfDisplayName(user), 'sortOrder': 0});
+    await batch.commit();
+    await setCurrentFamilyId(familyRef.id);
+    return familyRef.id;
+  }
+
+  /// Rejoint une famille par son ID (partagé hors app), et s'y ajoute comme membre par défaut.
   Future<void> joinFamily(String familyId) async {
-    if (_client == null || currentUser == null) throw Exception('Non connecté');
-    await _client.from('family_users').insert({
-      'family_id': familyId,
-      'user_id': currentUser!.id,
-      'role': 'member',
-    });
+    final user = currentUser;
+    if (user == null) throw Exception('Non connecté');
+    final familyRef = _db.collection('families').doc(familyId);
+    final batch = _db.batch();
+    batch.set(familyRef.collection('acl').doc(user.uid), {'uid': user.uid, 'role': 'member'});
+    batch.set(familyRef.collection('members').doc(user.uid), {'name': _selfDisplayName(user), 'sortOrder': 0});
+    await batch.commit();
     await setCurrentFamilyId(familyId);
+  }
+
+  /// Met à jour le prénom (displayName) de l'utilisateur connecté.
+  Future<void> updateDisplayName(String name) async {
+    await currentUser?.updateDisplayName(name);
+  }
+
+  /// Garantit que l'utilisateur connecté a bien un profil membre dans ce foyer
+  /// (rattrape les foyers créés avant l'ajout automatique du créateur comme membre).
+  Future<void> ensureSelfMember(String familyId) async {
+    final user = currentUser;
+    if (user == null) return;
+    final memberRef = _db.collection('families').doc(familyId).collection('members').doc(user.uid);
+    final doc = await memberRef.get();
+    if (!doc.exists) {
+      await memberRef.set({'name': _selfDisplayName(user), 'sortOrder': 0});
+    }
   }
 
   /// Déconnexion et effacement de la famille courante.
   Future<void> signOut() async {
     await setCurrentFamilyId(null);
-    if (_client != null) await _client.auth.signOut();
+    await _auth.signOut();
   }
 
   /// Connexion email / mot de passe.
   Future<void> signIn(String email, String password) async {
-    if (_client == null) throw StateError('Supabase non configuré');
-    await _client.auth.signInWithPassword(email: email, password: password);
+    await _auth.signInWithEmailAndPassword(email: email, password: password);
   }
 
   /// Inscription email / mot de passe.
   Future<void> signUp(String email, String password) async {
-    if (_client == null) throw StateError('Supabase non configuré');
-    await _client.auth.signUp(email: email, password: password);
+    await _auth.createUserWithEmailAndPassword(email: email, password: password);
   }
 
   /// Écoute les changements d'auth (connexion / déconnexion).
-  Stream<AuthState> get authStateChanges =>
-      _client?.auth.onAuthStateChange ?? const Stream.empty();
+  Stream<User?> get authStateChanges => _auth.authStateChanges();
 }

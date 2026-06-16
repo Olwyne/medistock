@@ -62,29 +62,29 @@ class ReminderService {
     return true;
   }
 
-  /// [id] : int (mobile) ou String serverId (web).
-  static Future<String?> getReminderTime(dynamic id) async {
+  /// Id de notification natif (int) dérivé de l'id Firestore (String), stable pour un id donné.
+  static int _notifId(String id) => id.hashCode & 0x7FFFFFFF;
+
+  static Future<String?> getReminderTime(String id) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('$_prefix${id.toString()}');
+    return prefs.getString('$_prefix$id');
   }
 
-  static Future<void> setReminderTime(dynamic id, String timeHHmm) async {
+  static Future<void> setReminderTime(String id, String timeHHmm) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('$_prefix${id.toString()}', timeHHmm);
+    await prefs.setString('$_prefix$id', timeHHmm);
   }
 
-  static Future<void> clearReminder(dynamic id) async {
+  static Future<void> clearReminder(String id) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('$_prefix${id.toString()}');
-    if (!kIsWeb && id is int) await _plugin.cancel(id);
+    await prefs.remove('$_prefix$id');
+    if (!kIsWeb) await _plugin.cancel(_notifId(id));
   }
 
   /// Schedules a daily notification at timeHHmm (e.g. "08:00"). medicationName for the body.
-  /// [medicationId] : int (mobile) ou String (web) ; sur web on enregistre l'heure en prefs uniquement.
-  static Future<void> scheduleReminder(dynamic medicationId, String timeHHmm, String medicationName) async {
+  static Future<void> scheduleReminder(String medicationId, String timeHHmm, String medicationName) async {
     await setReminderTime(medicationId, timeHHmm);
     if (kIsWeb) return;
-    if (medicationId is! int) return;
     await _requestPermission();
     final parts = timeHHmm.split(':');
     if (parts.length < 2) return;
@@ -106,7 +106,7 @@ class ReminderService {
       iOS: DarwinNotificationDetails(),
     );
     await _plugin.zonedSchedule(
-      medicationId,
+      _notifId(medicationId),
       'MediStock',
       'Prendre $medicationName',
       scheduled,
@@ -118,9 +118,9 @@ class ReminderService {
   }
 
   /// Reschedules all reminders. Call after app load with list of (medicationId, name, timeHHmm).
-  static Future<void> rescheduleAll(List<({int id, String name, String time})> items) async {
+  static Future<void> rescheduleAll(List<({String id, String name, String time})> items) async {
     for (final item in items) {
-      await _plugin.cancel(item.id);
+      await _plugin.cancel(_notifId(item.id));
     }
     await _requestPermission();
     final now = tz.TZDateTime.now(tz.local);
@@ -144,7 +144,7 @@ class ReminderService {
         scheduled = scheduled.add(const Duration(days: 1));
       }
       await _plugin.zonedSchedule(
-        item.id,
+        _notifId(item.id),
         'MediStock',
         'Prendre ${item.name}',
         scheduled,

@@ -1,6 +1,8 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class ShoppingItem {
-  final int? id;
-  final int? medicationId;
+  final String? id;
+  final String? medicationId;
   final String label;
   final bool checked;
   final DateTime createdAt;
@@ -13,25 +15,24 @@ class ShoppingItem {
     required this.createdAt,
   });
 
-  Map<String, dynamic> toMap() => {
-        'id': id,
-        'medication_id': medicationId,
+  Map<String, dynamic> toFirestore() => {
+        'medicationId': medicationId,
         'label': label,
-        'checked': checked ? 1 : 0,
-        'created_at': createdAt.toIso8601String(),
+        'checked': checked,
+        'createdAt': Timestamp.fromDate(createdAt),
       };
 
-  factory ShoppingItem.fromMap(Map<String, dynamic> m) => ShoppingItem(
-        id: m['id'] as int?,
-        medicationId: m['medication_id'] as int?,
-        label: m['label'] as String,
-        checked: (m['checked'] as int?) == 1,
-        createdAt: DateTime.parse(m['created_at'] as String),
+  factory ShoppingItem.fromFirestore(String id, Map<String, dynamic> data) => ShoppingItem(
+        id: id,
+        medicationId: data['medicationId'] as String?,
+        label: data['label'] as String,
+        checked: data['checked'] as bool? ?? false,
+        createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       );
 
   ShoppingItem copyWith({
-    int? id,
-    int? medicationId,
+    String? id,
+    String? medicationId,
     String? label,
     bool? checked,
     DateTime? createdAt,

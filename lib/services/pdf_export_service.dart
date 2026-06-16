@@ -10,7 +10,7 @@ class PdfExportService {
   /// [memberNameById] optional map to display member names (id -> name).
   static Future<String> generateInventoryPdf(
     List<Medication> medications, {
-    Map<int, String>? memberNameById,
+    Map<String, String>? memberNameById,
     bool onlyInStock = true,
   }) async {
     final list = onlyInStock ? medications.where((m) => m.quantite > 0).toList() : medications;
@@ -56,9 +56,10 @@ class PdfExportService {
       ),
       ...list.map((m) {
         final peremption = m.datePeremption != null ? DateFormat.yMMMd('fr').format(m.datePeremption!) : '–';
+        final noms = memberNameById == null ? <String>[] : m.memberIds.map((id) => memberNameById[id]).whereType<String>().toList();
         final lieuPersonne = [
           if (m.lieu != null && m.lieu!.isNotEmpty) m.lieu,
-          if (m.memberId != null && (memberNameById != null)) memberNameById[m.memberId],
+          if (noms.isNotEmpty) noms.join('/'),
         ].whereType<String>().join(' • ');
         return pw.TableRow(
           children: [

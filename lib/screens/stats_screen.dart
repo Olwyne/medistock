@@ -1,12 +1,9 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../core/env_config.dart';
-import '../data/database.dart';
+import '../data/firestore_repository.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/medication_provider.dart';
-import '../services/sync_service.dart';
 
 class StatsScreen extends StatelessWidget {
   const StatsScreen({super.key});
@@ -86,39 +83,18 @@ class StatsScreen extends StatelessWidget {
 
   Future<StatsData> _loadStats(BuildContext context) async {
     final provider = context.read<MedicationProvider>();
+    final familyId = context.read<AuthProvider>().currentFamilyId;
+    if (familyId == null) return StatsData(prises7: 0, prises30: 0, mostUsed: []);
+
     final now = DateTime.now();
     final start7 = now.subtract(const Duration(days: 7));
     final start30 = now.subtract(const Duration(days: 30));
 
-    // Sur le web : jamais SQLite, uniquement Supabase ou stats vides.
-    if (kIsWeb) {
-      if (!EnvConfig.isConfigured) return StatsData(prises7: 0, prises30: 0, mostUsed: []);
-      final familyId = context.read<AuthProvider>().currentFamilyId;
-      if (familyId == null) return StatsData(prises7: 0, prises30: 0, mostUsed: []);
-      final prises7List = await SyncService.getPrisesInRangeFromSupabase(familyId, start7, now);
-      final prises30List = await SyncService.getPrisesInRangeFromSupabase(familyId, start30, now);
-      final total7 = prises7List.fold<int>(0, (s, m) => s + m.quantite);
-      final total30 = prises30List.fold<int>(0, (s, m) => s + m.quantite);
-      final byMed = <String, int>{};
-      for (final m in prises30List) {
-        byMed[m.medicationId] = (byMed[m.medicationId] ?? 0) + m.quantite;
-      }
-      final sorted = byMed.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-      final mostUsed = <({String name, int count})>[];
-      for (final e in sorted.take(10)) {
-        final med = await provider.getById(e.key);
-        mostUsed.add((name: med?.nom ?? '#${e.key}', count: e.value));
-      }
-      return StatsData(prises7: total7, prises30: total30, mostUsed: mostUsed);
-    }
-
-    // Mobile : SQLite
-    final familyId = context.read<AuthProvider>().currentFamilyId;
-    final prises7 = await AppDatabase.getPrisesInRange(start7, now, familyId: familyId);
-    final prises30 = await AppDatabase.getPrisesInRange(start30, now, familyId: familyId);
+    final prises7 = await FirestoreRepository.getPrisesInRange(familyId, start7, now);
+    final prises30 = await FirestoreRepository.getPrisesInRange(familyId, start30, now);
     final total7 = prises7.fold<int>(0, (s, m) => s + m.quantite);
     final total30 = prises30.fold<int>(0, (s, m) => s + m.quantite);
-    final byMed = <int, int>{};
+    final byMed = <String, int>{};
     for (final m in prises30) {
       byMed[m.medicationId] = (byMed[m.medicationId] ?? 0) + m.quantite;
     }

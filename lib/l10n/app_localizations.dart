@@ -13,6 +13,23 @@ class AppLocalizations {
 
   String get _lang => locale.languageCode;
 
+  String get homeTitle => _t('home_title');
+  String get greeting => _t('greeting');
+  String get watchSection => _t('watch_section');
+  String get watchSectionHint => _t('watch_section_hint');
+  String get upcomingExpiry => _t('upcoming_expiry');
+  String get byPlace => _t('by_place');
+  String get seeAll => _t('see_all');
+  String get forWhom => _t('for_whom');
+  String get household => _t('household');
+  String get members => _t('members');
+  String get addMember => _t('add_member');
+  String get inviteSomeone => _t('invite_someone');
+  String get leaveHousehold => _t('leave_household');
+  String get goodToKnow => _t('good_to_know');
+  String get goodToKnowHint => _t('good_to_know_hint');
+  String get inStock => _t('in_stock');
+  String get toReorder => _t('to_reorder');
   String get inventaireTitle => _t('inventaire_title');
   String get scannerTitle => _t('scanner_title');
   String get alertesTitle => _t('alertes_title');
@@ -152,12 +169,33 @@ class AppLocalizations {
 
   String get checkWithDoctor => _t('check_with_doctor');
 
+  String get signIn => _t('sign_in');
+  String get signOut => _t('sign_out');
+  String get accountSynced => _t('account_synced');
+
   String _t(String key) {
     return _strings[_lang]?[key] ?? _strings['fr']?[key] ?? key;
   }
 
   static final Map<String, Map<String, String>> _strings = {
     'fr': {
+      'home_title': 'Accueil',
+      'greeting': 'Bonjour',
+      'watch_section': 'À surveiller',
+      'watch_section_hint': 'en un coup d\'œil',
+      'upcoming_expiry': 'Prochaines péremptions',
+      'by_place': 'Par lieu',
+      'see_all': 'Tout voir',
+      'for_whom': 'Pour qui ?',
+      'household': 'Foyer',
+      'members': 'Membres',
+      'add_member': 'Ajouter un membre',
+      'invite_someone': 'Inviter un proche',
+      'leave_household': 'Quitter ce foyer',
+      'good_to_know': 'Bon à savoir',
+      'good_to_know_hint': 'Conservez ce médicament à l\'abri de la lumière et de l\'humidité. Tenir hors de portée des enfants.',
+      'in_stock': 'En stock',
+      'to_reorder': 'À racheter',
       'inventaire_title': 'Inventaire',
       'scanner_title': 'Scanner',
       'alertes_title': 'Alertes',
@@ -284,8 +322,28 @@ class AppLocalizations {
       'stats_pastes_30': 'Prises (30 jours)',
       'stats_most_used': 'Plus consommés',
       'check_with_doctor': 'Vérifier avec votre médecin ou pharmacien.',
+      'sign_in': 'Se connecter',
+      'sign_out': 'Déconnexion',
+      'account_synced': 'Foyer synchronisé',
     },
     'en': {
+      'home_title': 'Home',
+      'greeting': 'Hello',
+      'watch_section': 'To watch',
+      'watch_section_hint': 'at a glance',
+      'upcoming_expiry': 'Upcoming expiries',
+      'by_place': 'By place',
+      'see_all': 'See all',
+      'for_whom': 'For whom?',
+      'household': 'Household',
+      'members': 'Members',
+      'add_member': 'Add a member',
+      'invite_someone': 'Invite someone',
+      'leave_household': 'Leave this household',
+      'good_to_know': 'Good to know',
+      'good_to_know_hint': 'Store this medication away from light and humidity. Keep out of reach of children.',
+      'in_stock': 'In stock',
+      'to_reorder': 'To reorder',
       'inventaire_title': 'Inventory',
       'scanner_title': 'Scan',
       'alertes_title': 'Alerts',
@@ -412,6 +470,9 @@ class AppLocalizations {
       'stats_pastes_30': 'Taken (30 days)',
       'stats_most_used': 'Most used',
       'check_with_doctor': 'Check with your doctor or pharmacist.',
+      'sign_in': 'Sign in',
+      'sign_out': 'Sign out',
+      'account_synced': 'Family synced',
     },
   };
 }

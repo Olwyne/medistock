@@ -10,6 +10,8 @@ import '../providers/auth_provider.dart';
 import '../providers/family_provider.dart';
 import '../providers/medication_provider.dart';
 import '../services/interactions_service.dart';
+import '../theme/cocon_theme.dart';
+import '../widgets/cocon/cocon.dart';
 
 class AddMedicationScreen extends StatefulWidget {
   final String? codeScanned;
@@ -45,7 +47,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
   DateTime? _datePeremption;
   bool _saving = false;
   late String _unite;
-  int? _memberId;
+  List<String> _memberIds = [];
   String? _photoPath;
 
   bool get isEditing => widget.editing != null;
@@ -64,7 +66,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     _unite = MedicationUnits.all.contains(suggestedUnite) ? suggestedUnite : MedicationUnits.plaquette;
     _lieuController = TextEditingController(text: e?.lieu ?? '');
     _seuilController = TextEditingController(text: e?.seuilAlerte.toString() ?? '0');
-    _memberId = e?.memberId;
+    _memberIds = List.of(e?.memberIds ?? const []);
     // Quantité par unité : édition > API (suggestedQuantiteParUnite) > vide
     final qteParUnite = e?.quantiteParUnite ?? widget.suggestedQuantiteParUnite;
     _quantiteParUniteController = TextEditingController(
@@ -134,7 +136,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
         unite: unite,
         quantiteParUnite: quantiteParUnite,
         lieu: lieu,
-        memberId: _memberId,
+        memberIds: _memberIds,
         datePeremption: _datePeremption,
         seuilAlerte: seuil,
         photoPath: _photoPath,
@@ -149,7 +151,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
           unite: unite,
           quantiteParUnite: quantiteParUnite,
           lieu: lieu,
-          memberId: _memberId,
+          memberIds: _memberIds,
           datePeremption: _datePeremption,
           seuilAlerte: seuil,
           noticeUrl: widget.noticeUrl,
@@ -169,20 +171,24 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     final l10n = AppLocalizations.of(context);
     final familyProvider = context.watch<FamilyProvider>();
     return Scaffold(
-      appBar: AppBar(
-        title: Text(isEditing ? l10n.editMedicationTitle : l10n.addMedicationTitle),
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
+      backgroundColor: CoconColors.bg,
+      body: Column(
+        children: [
+          CoconScreenHeader(
+            title: isEditing ? l10n.editMedicationTitle : l10n.addMedicationTitle,
+            onBack: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(18),
+                children: [
             TextFormField(
               controller: _nomController,
               decoration: InputDecoration(
                 labelText: l10n.medicationName,
                 hintText: l10n.medicationNameHint,
-                border: const OutlineInputBorder(),
               ),
               textCapitalization: TextCapitalization.sentences,
               validator: (v) => v?.trim().isEmpty ?? true ? l10n.required : null,
@@ -236,8 +242,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                     controller: _quantiteController,
                     decoration: InputDecoration(
                       labelText: l10n.quantity,
-                      border: const OutlineInputBorder(),
-                    ),
+                          ),
                     keyboardType: TextInputType.number,
                     validator: (v) {
                       final n = int.tryParse(v ?? '');
@@ -253,8 +258,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                     value: _unite,
                     decoration: InputDecoration(
                       labelText: l10n.unit,
-                      border: const OutlineInputBorder(),
-                    ),
+                          ),
                     items: MedicationUnits.all
                         .map((u) => DropdownMenuItem(value: u, child: Text(u)))
                         .toList(),
@@ -271,25 +275,30 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
               decoration: InputDecoration(
                 labelText: l10n.quantityPerUnit,
                 hintText: l10n.quantityPerUnitHint,
-                border: const OutlineInputBorder(),
               ),
               keyboardType: TextInputType.number,
             ),
             if (familyProvider.members.isNotEmpty) ...[
               const SizedBox(height: 16),
-              DropdownButtonFormField<int?>(
-                value: _memberId,
-                decoration: InputDecoration(
-                  labelText: l10n.family,
-                  border: const OutlineInputBorder(),
-                ),
-                items: [
-                  const DropdownMenuItem<int?>(value: null, child: Text('—')),
-                  ...familyProvider.members.map(
-                    (m) => DropdownMenuItem<int?>(value: m.id, child: Text(m.name)),
-                  ),
-                ],
-                onChanged: (v) => setState(() => _memberId = v),
+              Text(l10n.forWhom, style: const TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w800, fontSize: 12.5)),
+              const SizedBox(height: 7),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: familyProvider.members.map((m) {
+                  final selected = _memberIds.contains(m.id);
+                  return FilterChip(
+                    label: Text(m.name),
+                    selected: selected,
+                    onSelected: (v) => setState(() {
+                      if (v) {
+                        _memberIds.add(m.id);
+                      } else {
+                        _memberIds.remove(m.id);
+                      }
+                    }),
+                  );
+                }).toList(),
               ),
             ],
             if (familyProvider.places.isNotEmpty) ...[
@@ -300,8 +309,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                     : null,
                 decoration: InputDecoration(
                   labelText: l10n.place,
-                  border: const OutlineInputBorder(),
-                ),
+                  ),
                 items: [
                   const DropdownMenuItem<String?>(value: null, child: Text('—')),
                   ...familyProvider.places.map(
@@ -320,7 +328,6 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
               decoration: InputDecoration(
                 labelText: l10n.placeStorage,
                 hintText: l10n.placeStorageHint,
-                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 16),
@@ -329,7 +336,6 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
               decoration: InputDecoration(
                 labelText: l10n.alertStockMin,
                 hintText: l10n.alertStockHint,
-                border: const OutlineInputBorder(),
               ),
               keyboardType: TextInputType.number,
             ),
@@ -357,13 +363,16 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                 child: Text(l10n.removeDate),
               ),
             const SizedBox(height: 32),
-            FilledButton(
+            PrimaryButton(
+              label: l10n.save,
+              icon: _saving ? null : Icons.check,
               onPressed: _saving ? null : _save,
-              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
-              child: _saving ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(strokeWidth: 2)) : Text(l10n.save),
             ),
-          ],
-        ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../theme/cocon_theme.dart';
 
 class FamilyChoiceScreen extends StatefulWidget {
   const FamilyChoiceScreen({super.key});
@@ -64,6 +65,7 @@ class _FamilyChoiceScreenState extends State<FamilyChoiceScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
+      backgroundColor: CoconColors.bg,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -105,7 +107,6 @@ class _FamilyChoiceScreenState extends State<FamilyChoiceScreen> {
                     controller: _nameController,
                     decoration: const InputDecoration(
                       labelText: 'Nom du foyer (optionnel)',
-                      border: OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -124,7 +125,6 @@ class _FamilyChoiceScreenState extends State<FamilyChoiceScreen> {
                     controller: _joinIdController,
                     decoration: const InputDecoration(
                       labelText: 'ID du foyer (UUID)',
-                      border: OutlineInputBorder(),
                       hintText: 'Ex: 123e4567-e89b-12d3-a456-426614174000',
                     ),
                   ),

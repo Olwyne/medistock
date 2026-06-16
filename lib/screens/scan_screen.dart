@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_beep/flutter_beep.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -9,6 +8,7 @@ import '../providers/medication_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/medication_api_service.dart';
 import '../services/scan_service.dart';
+import '../theme/cocon_theme.dart';
 import 'add_medication_screen.dart';
 
 /// Mode du scan: ajout au stock ou déduction (prise).
@@ -66,7 +66,7 @@ class _ScanScreenState extends State<ScanScreen> {
     if (_mode == ScanMode.take) {
       final existing = await provider.getByCode(raw);
       if (existing != null) {
-        await provider.takeStock(kIsWeb ? existing.serverId : existing.id, 1);
+        await provider.takeStock(existing.id, 1);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -113,7 +113,7 @@ class _ScanScreenState extends State<ScanScreen> {
         ),
       );
       if (add == true && mounted) {
-        await provider.addStock(kIsWeb ? existing.serverId : existing.id, 1);
+        await provider.addStock(existing.id, 1);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -192,61 +192,142 @@ class _ScanScreenState extends State<ScanScreen> {
   Widget build(BuildContext context) {
     final isTakeMode = _mode == ScanMode.take;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Scanner'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ChoiceChip(
-                  label: const Text('Ajouter au stock'),
-                  selected: _mode == ScanMode.add,
-                  onSelected: (_) => setState(() => _mode = ScanMode.add),
-                ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('Retirer du stock'),
-                  selected: _mode == ScanMode.take,
-                  onSelected: (_) => setState(() => _mode = ScanMode.take),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          MobileScanner(
-            controller: _controller,
-            onDetect: _onDetect,
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 32,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Text(
-                  isTakeMode
-                      ? 'Scannez le code du médicament à retirer'
-                      : 'Scannez le code sur la boîte ou la plaquette',
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                  textAlign: TextAlign.center,
-                ),
+      backgroundColor: const Color(0xFF26221E),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
+              child: Row(
+                children: [
+                  Material(
+                    color: Colors.white.withValues(alpha: 0.14),
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: () => Navigator.of(context).pop(),
+                      child: const SizedBox(width: 40, height: 40, child: Icon(Icons.arrow_back, color: Colors.white, size: 20)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text('Scanner la boîte', style: TextStyle(fontFamily: 'Quicksand', fontWeight: FontWeight.w700, fontSize: 20, color: Colors.white)),
+                ],
               ),
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _ModeChip(label: 'Ajouter au stock', selected: _mode == ScanMode.add, onTap: () => setState(() => _mode = ScanMode.add)),
+                  const SizedBox(width: 8),
+                  _ModeChip(label: 'Retirer du stock', selected: _mode == ScanMode.take, onTap: () => setState(() => _mode = ScanMode.take)),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(28),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(28),
+                        child: MobileScanner(controller: _controller, onDetect: _onDetect),
+                      ),
+                    ),
+                  ),
+                  IgnorePointer(
+                    child: Center(
+                      child: SizedBox(
+                        width: 250,
+                        height: 250,
+                        child: CustomPaint(painter: _ScanCornersPainter(color: CoconColors.accent)),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 32,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(24)),
+                        child: Text(
+                          isTakeMode ? 'Scannez le code du médicament à retirer' : 'Scannez le code sur la boîte ou la plaquette',
+                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+class _ModeChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ModeChip({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? CoconColors.accent : Colors.white.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          child: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12.5)),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScanCornersPainter extends CustomPainter {
+  final Color color;
+  const _ScanCornersPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 4
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    const len = 28.0;
+    const r = 12.0;
+    final w = size.width, h = size.height;
+
+    void corner(Offset origin, double dx, double dy) {
+      final path = Path()
+        ..moveTo(origin.dx + dx * len, origin.dy)
+        ..lineTo(origin.dx + dx * r, origin.dy)
+        ..arcToPoint(Offset(origin.dx, origin.dy + dy * r), radius: const Radius.circular(r), clockwise: dx * dy < 0)
+        ..lineTo(origin.dx, origin.dy + dy * len);
+      canvas.drawPath(path, paint);
+    }
+
+    corner(const Offset(0, 0), 1, 1);
+    corner(Offset(w, 0), -1, 1);
+    corner(Offset(0, h), 1, -1);
+    corner(Offset(w, h), -1, -1);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScanCornersPainter oldDelegate) => oldDelegate.color != color;
 }

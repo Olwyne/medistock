@@ -1,10 +1,8 @@
-import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'core/env_config.dart';
+import 'firebase_options.dart';
 import 'l10n/app_localizations.dart';
 import 'providers/auth_provider.dart';
 import 'providers/family_provider.dart';
@@ -18,28 +16,11 @@ import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'services/reminder_service.dart';
+import 'theme/cocon_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  if (!kIsWeb) {
-    try {
-      await dotenv.load(fileName: '.env');
-      final url = dotenv.env['SUPABASE_URL'] ?? '';
-      final key = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
-      EnvConfig.setFromDotenv(url, key);
-    } catch (_) {
-      // .env manquant ou clés vides : mode local sans Supabase
-    }
-  }
-
-  if (EnvConfig.isConfigured) {
-    await Supabase.initialize(
-      url: EnvConfig.supabaseUrl,
-      anonKey: EnvConfig.supabaseAnonKey,
-    );
-  }
-
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await ReminderService.init();
   runApp(const MediStockApp());
 }
@@ -62,11 +43,7 @@ class MediStockApp extends StatelessWidget {
       child: Consumer4<AuthProvider, ThemeProvider, LocaleProvider, SettingsProvider>(
         builder: (context, authProvider, themeProvider, localeProvider, settingsProvider, _) {
           Widget home;
-          if (!authProvider.isConfigured) {
-            home = settingsProvider.onboardingDone
-                ? const HomeScreen()
-                : const OnboardingScreen();
-          } else if (!authProvider.isSignedIn) {
+          if (!authProvider.isSignedIn) {
             home = const LoginScreen();
           } else if (!authProvider.hasFamily) {
             home = const FamilyChoiceScreen();
@@ -87,23 +64,9 @@ class MediStockApp extends StatelessWidget {
               GlobalWidgetsLocalizations.delegate,
             ],
             locale: localeProvider.locale,
-            theme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E7D32), brightness: Brightness.light),
-              useMaterial3: true,
-              cardTheme: CardThemeData(
-                elevation: 1,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-            darkTheme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E7D32), brightness: Brightness.dark),
-              useMaterial3: true,
-              cardTheme: CardThemeData(
-                elevation: 1,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-            themeMode: themeProvider.themeMode,
+            theme: buildCoconTheme(),
+            darkTheme: buildCoconTheme(),
+            themeMode: ThemeMode.light,
             home: home,
           );
         },
