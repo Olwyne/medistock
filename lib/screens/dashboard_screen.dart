@@ -73,6 +73,7 @@ class DashboardScreen extends StatelessWidget {
                     ),
                     if (family.members.isNotEmpty)
                       SizedBox(
+                        width: 36.0 + (family.members.length - 1) * 24.0,
                         height: 38,
                         child: Stack(
                           children: [

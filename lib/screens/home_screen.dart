@@ -278,6 +278,7 @@ class _Sidebar extends StatelessWidget {
                     )
                   else
                     SizedBox(
+                      width: 30.0 + (family.members.length - 1) * 22.0,
                       height: 30,
                       child: Stack(
                         children: [
