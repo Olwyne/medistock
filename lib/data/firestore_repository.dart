@@ -55,7 +55,7 @@ class FirestoreRepository {
     await batch.commit();
   }
 
-  static Future<void> addStock(String familyId, String medicationId, int quantite) async {
+  static Future<void> addStock(String familyId, String medicationId, double quantite) async {
     final medRef = _family(familyId).collection('medications').doc(medicationId);
     await medRef.update({'quantite': FieldValue.increment(quantite)});
     await insertStockMovement(
@@ -65,11 +65,11 @@ class FirestoreRepository {
     );
   }
 
-  static Future<void> takeStock(String familyId, String medicationId, int quantite) async {
+  static Future<void> takeStock(String familyId, String medicationId, double quantite) async {
     final medRef = _family(familyId).collection('medications').doc(medicationId);
     final snap = await medRef.get();
-    final current = snap.data()?['quantite'] as int? ?? 0;
-    final newQty = (current - quantite).clamp(0, current);
+    final current = (snap.data()?['quantite'] as num? ?? 0).toDouble();
+    final newQty = (current - quantite).clamp(0.0, current);
     await medRef.update({'quantite': newQty});
     await insertStockMovement(
       familyId,

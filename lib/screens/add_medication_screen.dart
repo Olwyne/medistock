@@ -72,7 +72,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     final e = widget.editing;
     _nomController = TextEditingController(text: e?.nom ?? widget.suggestedName ?? '');
     _nomController.addListener(_onNameChanged);
-    _quantiteController = TextEditingController(text: e?.quantite.toString() ?? '1');
+    _quantiteController = TextEditingController(text: e != null ? e.quantite.toInt().toString() : '1');
     // Unité : édition > API (suggestedUnite) > forme pharmaceutique > défaut
     final uniteFromApi = widget.suggestedUnite != null && MedicationUnits.all.contains(widget.suggestedUnite)
         ? widget.suggestedUnite!
@@ -174,7 +174,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
       setState(() => _saving = false);
       return;
     }
-    final quantite = int.tryParse(_quantiteController.text) ?? 1;
+    final quantite = (int.tryParse(_quantiteController.text) ?? 1).toDouble();
     final unite = _unite;
     final quantiteParUnite = int.tryParse(_quantiteParUniteController.text);
     final lieu = _lieuController.text.trim().isEmpty ? null : _lieuController.text.trim();

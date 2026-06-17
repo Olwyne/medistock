@@ -80,14 +80,14 @@ class MedicationProvider with ChangeNotifier {
     await load();
   }
 
-  Future<void> addStock(String? medicationId, int quantite) async {
+  Future<void> addStock(String? medicationId, double quantite) async {
     final fid = _auth?.currentFamilyId;
     if (fid == null || medicationId == null) return;
     await FirestoreRepository.addStock(fid, medicationId, quantite);
     await load();
   }
 
-  Future<void> takeStock(String? medicationId, int quantite) async {
+  Future<void> takeStock(String? medicationId, double quantite) async {
     final fid = _auth?.currentFamilyId;
     if (fid == null || medicationId == null) return;
     await FirestoreRepository.takeStock(fid, medicationId, quantite);

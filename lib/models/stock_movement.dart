@@ -11,7 +11,7 @@ class StockMovement {
   final String? id;
   final String medicationId;
   final StockMovementType type;
-  final int quantite;
+  final double quantite;
   final DateTime date;
 
   const StockMovement({
@@ -37,7 +37,7 @@ class StockMovement {
       id: id,
       medicationId: medicationId,
       type: data['type'] == 'ajout' ? StockMovementType.ajout : StockMovementType.prise,
-      quantite: data['quantite'] as int,
+      quantite: (data['quantite'] as num? ?? 0).toDouble(),
       date: (data['date'] as Timestamp).toDate(),
     );
   }

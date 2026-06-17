@@ -6,7 +6,7 @@ class Medication {
   final String? id;
   final String codeScanned;
   final String nom;
-  final int quantite;
+  final double quantite;
   final String unite; // Comprimé, Plaquette, Boîte, Sachet, Flacon, ML, Tube
   final int? quantiteParUnite; // ex: 30 comprimés par plaquette
   final DateTime? datePeremption;
@@ -43,7 +43,7 @@ class Medication {
     String? id,
     String? codeScanned,
     String? nom,
-    int? quantite,
+    double? quantite,
     String? unite,
     int? quantiteParUnite,
     DateTime? datePeremption,
@@ -102,7 +102,7 @@ class Medication {
       id: id,
       codeScanned: data['codeScanned'] as String? ?? '',
       nom: data['nom'] as String,
-      quantite: data['quantite'] as int,
+      quantite: (data['quantite'] as num? ?? 0).toDouble(),
       unite: data['unite'] as String? ?? 'Plaquette',
       quantiteParUnite: data['quantiteParUnite'] as int?,
       datePeremption: (data['datePeremption'] as Timestamp?)?.toDate(),
@@ -139,4 +139,36 @@ class Medication {
   }
 
   bool get stockFaible => seuilAlerte > 0 && quantite <= seuilAlerte;
+
+  /// Sous-unité contenue dans une unité (ex: Comprimé dans une Plaquette).
+  /// Null si pas de sous-unité pertinente pour cette unite.
+  String? get sousUnite {
+    if (quantiteParUnite == null) return null;
+    switch (unite) {
+      case 'Plaquette':
+      case 'Boîte':
+        return 'Comprimé';
+      case 'Flacon':
+        return 'mL';
+      default:
+        return null;
+    }
+  }
+
+  /// Quantité totale en sous-unités (si quantiteParUnite défini).
+  double? get totalSousUnites => quantiteParUnite != null ? quantite * quantiteParUnite! : null;
+
+  /// Affichage lisible de la quantité (arrondi si entier, 1 décimale sinon).
+  String get quantiteDisplay {
+    if (quantite == quantite.truncateToDouble()) return quantite.toInt().toString();
+    // Affiche les unités entières + comprimés restants dans la plaquette entamée
+    if (quantiteParUnite != null) {
+      final entiers = quantite.floor();
+      final fractionSousUnites = ((quantite - entiers) * quantiteParUnite!).round();
+      if (fractionSousUnites > 0) {
+        return entiers > 0 ? '$entiers + $fractionSousUnites ${sousUnite ?? ''}' : '$fractionSousUnites ${sousUnite ?? ''}';
+      }
+    }
+    return quantite.toStringAsFixed(1);
+  }
 }

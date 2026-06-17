@@ -5,15 +5,18 @@ import '../services/auth_service.dart';
 class AuthProvider with ChangeNotifier {
   AuthProvider() {
     _auth = AuthService();
-    _init();
     _auth.authStateChanges.listen((_) {
       unawaited(_onAuthChange());
     });
+    // Premier chargement : lit les prefs, puis le stream déclenchera _onAuthChange
+    // si un user est déjà connecté. _loading reste true jusqu'à la fin.
+    _readPrefsAndWait();
   }
 
   late final AuthService _auth;
   String? _currentFamilyId;
   bool _loading = true;
+  bool _authChangePending = false;
   String? _error;
 
   bool get isSignedIn => _auth.isSignedIn;
@@ -24,12 +27,22 @@ class AuthProvider with ChangeNotifier {
   String? get userEmail => _auth.currentUser?.email;
   String? get userName => _auth.currentUser?.displayName;
 
-  /// Cherche les foyers de l'utilisateur dans Firestore, avec retries : juste après
-  /// signIn/signUp (ou au tout premier chargement sur réseau mobile lent), le token
-  /// Firebase Auth peut ne pas encore être propagé au SDK Firestore -> permission-denied
-  /// transitoire. On retente plutôt que d'abandonner silencieusement.
+  /// Lit les prefs locales au démarrage. Si l'user n'est pas connecté, termine
+  /// immédiatement. Si connecté, _onAuthChange (via le stream) complètera le chargement.
+  Future<void> _readPrefsAndWait() async {
+    _currentFamilyId = await AuthService.getCurrentFamilyId();
+    // Si pas connecté ou familyId déjà en prefs → on peut finir ici
+    // Si connecté et pas de familyId, _onAuthChange (stream) va chercher dans Firestore
+    if (!isSignedIn) {
+      _loading = false;
+      notifyListeners();
+    }
+    // Si connecté : le stream authStateChanges fire immédiatement au démarrage,
+    // donc _onAuthChange va prendre le relais et settera _loading = false.
+  }
+
   Future<List<Map<String, dynamic>>> _getFamiliesWithRetry() async {
-    const delays = [Duration(milliseconds: 300), Duration(milliseconds: 800), Duration(milliseconds: 1500)];
+    const delays = [Duration(milliseconds: 400), Duration(milliseconds: 1000), Duration(milliseconds: 2000)];
     for (var attempt = 0; attempt <= delays.length; attempt++) {
       try {
         return await _auth.getFamilies();
@@ -41,38 +54,31 @@ class AuthProvider with ChangeNotifier {
     return [];
   }
 
-  Future<void> _init() async {
-    _loading = true;
-    notifyListeners();
-    _currentFamilyId = await AuthService.getCurrentFamilyId();
-    if (isSignedIn && _currentFamilyId == null) {
-      final families = await _getFamiliesWithRetry();
-      if (families.isNotEmpty) {
-        await AuthService.setCurrentFamilyId(families.first['id'] as String?);
-        _currentFamilyId = await AuthService.getCurrentFamilyId();
-      }
-    }
-    _loading = false;
-    notifyListeners();
-  }
-
   Future<void> _onAuthChange() async {
+    // Guard : évite exécutions concurrentes
+    if (_authChangePending) return;
+    _authChangePending = true;
     _loading = true;
     notifyListeners();
-    if (!_auth.isSignedIn) {
-      _currentFamilyId = null;
-    } else {
-      _currentFamilyId = await AuthService.getCurrentFamilyId();
-      if (_currentFamilyId == null) {
-        final families = await _getFamiliesWithRetry();
-        if (families.isNotEmpty) {
-          await AuthService.setCurrentFamilyId(families.first['id'] as String?);
-          _currentFamilyId = await AuthService.getCurrentFamilyId();
+
+    try {
+      if (!_auth.isSignedIn) {
+        _currentFamilyId = null;
+      } else {
+        _currentFamilyId = await AuthService.getCurrentFamilyId();
+        if (_currentFamilyId == null) {
+          final families = await _getFamiliesWithRetry();
+          if (families.isNotEmpty) {
+            await AuthService.setCurrentFamilyId(families.first['id'] as String?);
+            _currentFamilyId = families.first['id'] as String?;
+          }
         }
       }
+    } finally {
+      _authChangePending = false;
+      _loading = false;
+      notifyListeners();
     }
-    _loading = false;
-    notifyListeners();
   }
 
   Future<void> signIn(String email, String password) async {
@@ -80,7 +86,9 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
     try {
       await _auth.signIn(email, password);
-      await _onAuthChange();
+      // Le stream authStateChanges déclenche _onAuthChange automatiquement.
+      // On attend qu'il se termine pour que le UI soit cohérent.
+      await _waitForAuthChange();
     } catch (e) {
       _error = e.toString();
       rethrow;
@@ -97,7 +105,7 @@ class AuthProvider with ChangeNotifier {
       if (displayName != null && displayName.trim().isNotEmpty) {
         await _auth.updateDisplayName(displayName.trim());
       }
-      await _onAuthChange();
+      await _waitForAuthChange();
     } catch (e) {
       _error = e.toString();
       rethrow;
@@ -106,12 +114,21 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  /// Attend que _onAuthChange (déclenché par le stream) ait terminé.
+  Future<void> _waitForAuthChange() async {
+    // Petit délai pour laisser le stream fire et _onAuthChange démarrer
+    await Future.delayed(const Duration(milliseconds: 100));
+    // Puis attend la fin
+    while (_authChangePending) {
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+  }
+
   Future<void> updateDisplayName(String name) async {
     await _auth.updateDisplayName(name);
     notifyListeners();
   }
 
-  /// Rattrape les foyers où l'utilisateur n'a pas (encore) de profil membre.
   Future<void> ensureSelfMember() async {
     final familyId = _currentFamilyId;
     if (familyId == null) return;

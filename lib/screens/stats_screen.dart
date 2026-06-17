@@ -37,7 +37,7 @@ class StatsScreen extends StatelessWidget {
                     children: [
                       Text(l10n.statsPastes7, style: theme.textTheme.titleMedium),
                       const SizedBox(height: 8),
-                      Text('${data.prises7}', style: theme.textTheme.headlineMedium?.copyWith(color: theme.colorScheme.primary)),
+                      Text(data.prises7 == data.prises7.truncateToDouble() ? '${data.prises7.toInt()}' : data.prises7.toStringAsFixed(1), style: theme.textTheme.headlineMedium?.copyWith(color: theme.colorScheme.primary)),
                     ],
                   ),
                 ),
@@ -51,7 +51,7 @@ class StatsScreen extends StatelessWidget {
                     children: [
                       Text(l10n.statsPastes30, style: theme.textTheme.titleMedium),
                       const SizedBox(height: 8),
-                      Text('${data.prises30}', style: theme.textTheme.headlineMedium?.copyWith(color: theme.colorScheme.primary)),
+                      Text(data.prises30 == data.prises30.truncateToDouble() ? '${data.prises30.toInt()}' : data.prises30.toStringAsFixed(1), style: theme.textTheme.headlineMedium?.copyWith(color: theme.colorScheme.primary)),
                     ],
                   ),
                 ),
@@ -71,7 +71,7 @@ class StatsScreen extends StatelessWidget {
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
                     title: Text(e.name),
-                    trailing: Text('${e.count}', style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.primary)),
+                    trailing: Text(e.count == e.count.truncateToDouble() ? '${e.count.toInt()}' : e.count.toStringAsFixed(1), style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.primary)),
                   ),
                 )),
             ],
@@ -92,14 +92,14 @@ class StatsScreen extends StatelessWidget {
 
     final prises7 = await FirestoreRepository.getPrisesInRange(familyId, start7, now);
     final prises30 = await FirestoreRepository.getPrisesInRange(familyId, start30, now);
-    final total7 = prises7.fold<int>(0, (s, m) => s + m.quantite);
-    final total30 = prises30.fold<int>(0, (s, m) => s + m.quantite);
-    final byMed = <String, int>{};
+    final total7 = prises7.fold<double>(0, (s, m) => s + m.quantite);
+    final total30 = prises30.fold<double>(0, (s, m) => s + m.quantite);
+    final byMed = <String, double>{};
     for (final m in prises30) {
       byMed[m.medicationId] = (byMed[m.medicationId] ?? 0) + m.quantite;
     }
     final sorted = byMed.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-    final mostUsed = <({String name, int count})>[];
+    final mostUsed = <({String name, double count})>[];
     for (final e in sorted.take(10)) {
       final med = await provider.getById(e.key);
       mostUsed.add((name: med?.nom ?? '#${e.key}', count: e.value));
@@ -109,9 +109,9 @@ class StatsScreen extends StatelessWidget {
 }
 
 class StatsData {
-  final int prises7;
-  final int prises30;
-  final List<({String name, int count})> mostUsed;
+  final double prises7;
+  final double prises30;
+  final List<({String name, double count})> mostUsed;
 
   StatsData({required this.prises7, required this.prises30, required this.mostUsed});
 }

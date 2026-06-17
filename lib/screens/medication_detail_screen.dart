@@ -26,7 +26,7 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
   Medication? _medication;
   List<StockMovement> _movements = [];
   String? _reminderTime;
-  int _takeQty = 1;
+  double _takeQty = 1.0;
 
   Future<void> _load([MedicationProvider? provider]) async {
     final p = provider ?? context.read<MedicationProvider>();
@@ -38,7 +38,7 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
         _medication = m;
         _movements = movements;
         _reminderTime = reminder;
-        _takeQty = 1;
+        _takeQty = 1.0;
       });
     }
   }
@@ -152,7 +152,7 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${m.quantite} ${_uniteWithPlural(m)}${m.quantiteParUnite != null ? ' (× ${m.quantiteParUnite})' : ''}',
+                    '${m.quantiteDisplay} ${_uniteWithPlural(m)}${m.quantiteParUnite != null && m.sousUnite != null ? ' · ${m.totalSousUnites?.toStringAsFixed(0)} ${m.sousUnite}s' : ''}',
                     style: const TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w700, fontSize: 14.5),
                   ),
                   const SizedBox(height: 12),
@@ -262,39 +262,59 @@ class _MedicationDetailScreenState extends State<MedicationDetailScreen> {
                           decoration: InputDecoration(labelText: l10n.quantity, contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12)),
                           onChanged: (v) {
                             final n = int.tryParse(v);
-                            if (n != null && n >= 1) setState(() => _takeQty = n.clamp(1, m.quantite));
+                            if (n != null && n >= 1) setState(() => _takeQty = n.clamp(1, m.quantite.ceil()).toDouble());
                           },
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: PrimaryButton(
-                          label: '${l10n.removeQuantity} $_takeQty',
+                          label: '${l10n.removeQuantity} ${_takeQty.toInt()} ${m.unite}',
                           icon: Icons.remove_circle_outline,
                           onPressed: m.quantite <= 0
                               ? null
                               : () async {
-                                  final qty = _takeQty.clamp(1, m.quantite);
+                                  final qty = _takeQty.clamp(1.0, m.quantite);
                                   final provider = context.read<MedicationProvider>();
                                   final messenger = ScaffoldMessenger.maybeOf(context);
-                                  final unite = m.unite;
                                   await provider.takeStock(m.id, qty);
                                   await _load();
                                   if (mounted && messenger != null) {
-                                    messenger.showSnackBar(SnackBar(content: Text('$qty $unite'), behavior: SnackBarBehavior.floating));
+                                    messenger.showSnackBar(SnackBar(content: Text('−${qty.toInt()} ${m.unite}'), behavior: SnackBarBehavior.floating));
                                   }
                                 },
                         ),
                       ),
                     ],
                   ),
+                  // Bouton sous-unité (ex: Retirer 1 Comprimé d'une Plaquette)
+                  if (m.quantiteParUnite != null && m.sousUnite != null) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: m.quantite <= 0
+                          ? null
+                          : () async {
+                              final sousQty = 1.0 / m.quantiteParUnite!;
+                              final provider = context.read<MedicationProvider>();
+                              final messenger = ScaffoldMessenger.maybeOf(context);
+                              await provider.takeStock(m.id, sousQty);
+                              await _load();
+                              if (mounted && messenger != null) {
+                                messenger.showSnackBar(SnackBar(content: Text('−1 ${m.sousUnite}'), behavior: SnackBarBehavior.floating));
+                              }
+                            },
+                      icon: const Icon(Icons.remove_circle_outline, size: 18),
+                      label: Text('Retirer 1 ${m.sousUnite}'),
+                      style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+                    ),
+                  ],
                   const SizedBox(height: 11),
                   OutlinedButton.icon(
                     onPressed: () async {
                       final provider = context.read<MedicationProvider>();
                       final messenger = ScaffoldMessenger.maybeOf(context);
                       final unite = m.unite;
-                      await provider.addStock(m.id, 1);
+                      await provider.addStock(m.id, 1.0);
                       await _load();
                       if (mounted && messenger != null) {
                         messenger.showSnackBar(SnackBar(content: Text('+1 $unite ajouté'), behavior: SnackBarBehavior.floating));
