@@ -45,6 +45,8 @@ class MediStockApp extends StatelessWidget {
           Widget home;
           if (!authProvider.isSignedIn) {
             home = const LoginScreen();
+          } else if (authProvider.loading) {
+            home = const Scaffold(body: Center(child: CircularProgressIndicator()));
           } else if (!authProvider.hasFamily) {
             home = const FamilyChoiceScreen();
           } else if (!settingsProvider.onboardingDone) {

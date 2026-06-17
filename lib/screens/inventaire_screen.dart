@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../data/indication_tags.dart';
 import '../l10n/app_localizations.dart';
 import '../models/medication.dart';
 import '../providers/family_provider.dart';
@@ -35,6 +36,7 @@ class _InventaireScreenState extends State<InventaireScreen> {
   InventaireFilter _filter = InventaireFilter.tous;
   String? _lieuFilter;
   String? _memberFilter;
+  String? _indicationFilter;
 
   @override
   void dispose() {
@@ -73,6 +75,9 @@ class _InventaireScreenState extends State<InventaireScreen> {
       if (_filter == InventaireFilter.stockFaible && !m.stockFaible) return false;
       if (_lieuFilter != null && m.lieu != _lieuFilter) return false;
       if (_memberFilter != null && !m.memberIds.contains(_memberFilter)) return false;
+      if (_indicationFilter != null &&
+          (m.indication == null ||
+              !m.indication!.toLowerCase().contains(_indicationFilter!.toLowerCase()))) return false;
       return true;
     }).toList();
 
@@ -172,6 +177,23 @@ class _InventaireScreenState extends State<InventaireScreen> {
                   final familyProvider = context.watch<FamilyProvider>();
                   final memberIdsInUse = provider.medications.expand((m) => m.memberIds).toSet();
                   final membersInUse = familyProvider.members.where((m) => memberIdsInUse.contains(m.id)).toList();
+                  final indicationsInInventory = provider.medications
+                      .map((m) => m.indication?.trim())
+                      .whereType<String>()
+                      .where((s) => s.isNotEmpty)
+                      .toSet();
+                  final indicationChips = kIndicationTags
+                      .where((tag) => indicationsInInventory.any(
+                            (ind) => ind.toLowerCase().contains(tag.toLowerCase()),
+                          ))
+                      .toList();
+                  // Indications personnalisées non présentes dans kIndicationTags
+                  final customIndications = indicationsInInventory
+                      .where((ind) => !kIndicationTags.any(
+                            (tag) => ind.toLowerCase().contains(tag.toLowerCase()),
+                          ))
+                      .toList()
+                    ..sort();
 
                   return RefreshIndicator(
                     onRefresh: () => provider.load(),
@@ -197,59 +219,104 @@ class _InventaireScreenState extends State<InventaireScreen> {
                           ),
                         ),
                         SliverToBoxAdapter(
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
-                            child: Row(
-                              children: [
-                                CoconChip(
-                                  label: l10n.filterAll,
-                                  active: _filter == InventaireFilter.tous && _lieuFilter == null && _memberFilter == null,
-                                  onTap: () => setState(() {
-                                    _filter = InventaireFilter.tous;
-                                    _lieuFilter = null;
-                                    _memberFilter = null;
-                                  }),
-                                ),
-                                const SizedBox(width: 8),
-                                CoconChip(
-                                  label: l10n.filterSoonExpiry,
-                                  active: _filter == InventaireFilter.bientotPerime,
-                                  onTap: () => setState(() => _filter = InventaireFilter.bientotPerime),
-                                ),
-                                const SizedBox(width: 8),
-                                CoconChip(
-                                  label: l10n.filterLowStock,
-                                  active: _filter == InventaireFilter.stockFaible,
-                                  onTap: () => setState(() => _filter = InventaireFilter.stockFaible),
-                                ),
-                                if (lieux.isNotEmpty) ...[
-                                  const SizedBox(width: 8),
-                                  PopupMenuButton<String?>(
-                                    tooltip: l10n.place,
-                                    itemBuilder: (_) => lieux.map((l) => PopupMenuItem(value: l, child: Text(l))).toList(),
-                                    onSelected: (v) => setState(() => _lieuFilter = v),
-                                    child: CoconChip(label: _lieuFilter ?? l10n.place, active: _lieuFilter != null, onTap: () {}),
-                                  ),
-                                ],
-                                if (membersInUse.isNotEmpty) ...[
-                                  const SizedBox(width: 8),
-                                  PopupMenuButton<String?>(
-                                    tooltip: l10n.family,
-                                    itemBuilder: (_) => [
-                                      PopupMenuItem<String?>(value: null, child: Text(l10n.filterAll)),
-                                      ...membersInUse.map((m) => PopupMenuItem<String?>(value: m.id, child: Text(m.name))),
-                                    ],
-                                    onSelected: (v) => setState(() => _memberFilter = v),
-                                    child: CoconChip(
-                                      label: _memberFilter == null ? l10n.family : (membersInUse.where((m) => m.id == _memberFilter).firstOrNull?.name ?? l10n.family),
-                                      active: _memberFilter != null,
-                                      onTap: () {},
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Ligne 1 : filtres status + famille
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
+                                child: Row(
+                                  children: [
+                                    CoconChip(
+                                      label: l10n.filterAll,
+                                      active: _filter == InventaireFilter.tous &&
+                                          _lieuFilter == null &&
+                                          _memberFilter == null &&
+                                          _indicationFilter == null,
+                                      onTap: () => setState(() {
+                                        _filter = InventaireFilter.tous;
+                                        _lieuFilter = null;
+                                        _memberFilter = null;
+                                        _indicationFilter = null;
+                                      }),
                                     ),
+                                    const SizedBox(width: 8),
+                                    CoconChip(
+                                      label: l10n.filterSoonExpiry,
+                                      active: _filter == InventaireFilter.bientotPerime,
+                                      onTap: () => setState(() => _filter = _filter == InventaireFilter.bientotPerime ? InventaireFilter.tous : InventaireFilter.bientotPerime),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    CoconChip(
+                                      label: l10n.filterLowStock,
+                                      active: _filter == InventaireFilter.stockFaible,
+                                      onTap: () => setState(() => _filter = _filter == InventaireFilter.stockFaible ? InventaireFilter.tous : InventaireFilter.stockFaible),
+                                    ),
+                                    if (membersInUse.isNotEmpty) ...[
+                                      const SizedBox(width: 8),
+                                      PopupMenuButton<String?>(
+                                        tooltip: l10n.family,
+                                        itemBuilder: (_) => [
+                                          PopupMenuItem<String?>(value: null, child: Text(l10n.filterAll)),
+                                          ...membersInUse.map((m) => PopupMenuItem<String?>(value: m.id, child: Text(m.name))),
+                                        ],
+                                        onSelected: (v) => setState(() => _memberFilter = v),
+                                        child: CoconChip(
+                                          label: _memberFilter == null
+                                              ? l10n.family
+                                              : (membersInUse.where((m) => m.id == _memberFilter).firstOrNull?.name ?? l10n.family),
+                                          active: _memberFilter != null,
+                                          onTap: () {},
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              // Ligne 2 : filtres lieu (chips individuelles)
+                              if (lieux.isNotEmpty)
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  padding: const EdgeInsets.fromLTRB(18, 2, 18, 2),
+                                  child: Row(
+                                    children: lieux.map((lieu) => Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: CoconChip(
+                                        label: lieu,
+                                        active: _lieuFilter == lieu,
+                                        onTap: () => setState(() => _lieuFilter = _lieuFilter == lieu ? null : lieu),
+                                      ),
+                                    )).toList(),
                                   ),
-                                ],
-                              ],
-                            ),
+                                ),
+                              // Ligne 3 : filtres indication (pills pré-faites présentes dans l'inventaire)
+                              if (indicationChips.isNotEmpty || customIndications.isNotEmpty)
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  padding: const EdgeInsets.fromLTRB(18, 2, 18, 6),
+                                  child: Row(
+                                    children: [
+                                      ...indicationChips.map((tag) => Padding(
+                                        padding: const EdgeInsets.only(right: 8),
+                                        child: CoconChip(
+                                          label: tag,
+                                          active: _indicationFilter == tag,
+                                          onTap: () => setState(() => _indicationFilter = _indicationFilter == tag ? null : tag),
+                                        ),
+                                      )),
+                                      ...customIndications.map((ind) => Padding(
+                                        padding: const EdgeInsets.only(right: 8),
+                                        child: CoconChip(
+                                          label: ind,
+                                          active: _indicationFilter == ind,
+                                          onTap: () => setState(() => _indicationFilter = _indicationFilter == ind ? null : ind),
+                                        ),
+                                      )),
+                                    ],
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                         SliverPadding(

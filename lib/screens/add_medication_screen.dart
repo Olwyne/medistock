@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import '../data/dci_indications.dart';
+import '../data/indication_tags.dart';
 import '../l10n/app_localizations.dart';
 import '../models/medication.dart';
 import '../models/medication_units.dart';
@@ -51,6 +52,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
   late TextEditingController _quantiteParUniteController;
   late TextEditingController _dciController;
   late TextEditingController _indicationController;
+  String? _selectedIndicationTag;
   late TextEditingController _posologieController;
   late TextEditingController _precautionsController;
   DateTime? _datePeremption;
@@ -89,7 +91,13 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     _photoPath = e?.photoPath;
     final dci = e?.dci ?? widget.suggestedDci;
     _dciController = TextEditingController(text: dci ?? '');
-    _indicationController = TextEditingController(text: e?.indication ?? (e == null ? suggestIndicationFromDci(dci) ?? '' : ''));
+    final existingIndication = e?.indication ?? (e == null ? suggestIndicationFromDci(dci) : null);
+    if (existingIndication != null && kIndicationTags.any((t) => t.toLowerCase() == existingIndication.toLowerCase())) {
+      _selectedIndicationTag = kIndicationTags.firstWhere((t) => t.toLowerCase() == existingIndication.toLowerCase());
+      _indicationController = TextEditingController();
+    } else {
+      _indicationController = TextEditingController(text: existingIndication ?? '');
+    }
     _posologieController = TextEditingController(text: e?.posologie ?? '');
     _precautionsController = TextEditingController(text: e?.precautions ?? '');
   }
@@ -140,9 +148,16 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     }
     if (r.dci != null) {
       _dciController.text = r.dci!;
-      if (_indicationController.text.trim().isEmpty) {
+      if (_selectedIndicationTag == null && _indicationController.text.trim().isEmpty) {
         final suggestion = suggestIndicationFromDci(r.dci);
-        if (suggestion != null) _indicationController.text = suggestion;
+        if (suggestion != null) {
+          final matchedTag = kIndicationTags.where((t) => t.toLowerCase() == suggestion.toLowerCase()).firstOrNull;
+          if (matchedTag != null) {
+            setState(() => _selectedIndicationTag = matchedTag);
+          } else {
+            _indicationController.text = suggestion;
+          }
+        }
       }
     }
     setState(() => _suggestions = []);
@@ -198,7 +213,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     }
 
     final dci = _dciController.text.trim().isEmpty ? null : _dciController.text.trim();
-    final indication = _indicationController.text.trim().isEmpty ? null : _indicationController.text.trim();
+    final indication = _selectedIndicationTag ?? (_indicationController.text.trim().isEmpty ? null : _indicationController.text.trim());
     final posologie = _posologieController.text.trim().isEmpty ? null : _posologieController.text.trim();
     final precautions = _precautionsController.text.trim().isEmpty ? null : _precautionsController.text.trim();
 
@@ -430,34 +445,57 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                 }).toList(),
               ),
             ],
-            if (familyProvider.places.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String?>(
-                value: familyProvider.places.any((p) => p.name == _lieuController.text.trim())
-                    ? _lieuController.text.trim()
-                    : null,
-                decoration: InputDecoration(
-                  labelText: l10n.place,
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String?>(
+                    value: familyProvider.places.any((p) => p.name == _lieuController.text.trim())
+                        ? _lieuController.text.trim()
+                        : null,
+                    decoration: InputDecoration(labelText: l10n.placeStorage),
+                    items: [
+                      const DropdownMenuItem<String?>(value: null, child: Text('—')),
+                      ...familyProvider.places.map(
+                        (p) => DropdownMenuItem<String?>(value: p.name, child: Text(p.name)),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => _lieuController.text = v ?? ''),
                   ),
-                items: [
-                  const DropdownMenuItem<String?>(value: null, child: Text('—')),
-                  ...familyProvider.places.map(
-                    (p) => DropdownMenuItem<String?>(value: p.name, child: Text(p.name)),
-                  ),
-                ],
-                onChanged: (v) {
-                  _lieuController.text = v ?? '';
-                  setState(() {});
-                },
-              ),
-            ],
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _lieuController,
-              decoration: InputDecoration(
-                labelText: l10n.placeStorage,
-                hintText: l10n.placeStorageHint,
-              ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.add_circle_outline),
+                  tooltip: 'Ajouter un lieu',
+                  onPressed: () async {
+                    final ctrl = TextEditingController();
+                    final name = await showDialog<String>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Nouveau lieu'),
+                        content: TextField(
+                          controller: ctrl,
+                          autofocus: true,
+                          decoration: const InputDecoration(hintText: 'ex. Armoire salle de bain'),
+                          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+                        ),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+                            child: const Text('Ajouter'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (name != null && name.isNotEmpty) {
+                      await familyProvider.addPlace(name);
+                      setState(() => _lieuController.text = name);
+                    }
+                  },
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -494,12 +532,45 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
             const SizedBox(height: 24),
             const Text('Infos santé', style: TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w800, fontSize: 12.5)),
             const SizedBox(height: 7),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                ...kIndicationTags.map((tag) {
+                  final active = _selectedIndicationTag == tag;
+                  return InkWell(
+                    onTap: () => setState(() {
+                      _selectedIndicationTag = active ? null : tag;
+                    }),
+                    borderRadius: BorderRadius.circular(99),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: active ? CoconColors.ink : CoconColors.surface,
+                        borderRadius: BorderRadius.circular(99),
+                        border: Border.all(color: active ? CoconColors.ink : CoconColors.line, width: 1.5),
+                      ),
+                      child: Text(
+                        tag,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: active ? Colors.white : CoconColors.muted,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+            const SizedBox(height: 10),
             TextFormField(
               controller: _indicationController,
               decoration: const InputDecoration(
-                labelText: 'À quoi ça sert',
-                hintText: 'ex. maux de tête, fièvre, antibiotique...',
+                labelText: 'Autre indication',
+                hintText: 'ex. maux de tête, douleurs articulaires...',
               ),
+              onChanged: (_) => setState(() => _selectedIndicationTag = null),
             ),
             const SizedBox(height: 12),
             TextFormField(

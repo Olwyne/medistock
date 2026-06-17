@@ -109,6 +109,43 @@ class MedicationApiService {
     }
   }
 
+  /// Fallback EAN : interroge Open Food Facts, récupère le nom produit, puis searchByName.
+  /// Utilisé quand lookupByCip ne trouve rien (produit OTC non indexé par CIP).
+  Future<MedicationApiLookupResult> lookupByEanFallback(String ean) async {
+    final digits = ean.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) {
+      return const MedicationApiLookupResult(error: ApiError(ApiErrorType.unknown, 'EAN invalide'));
+    }
+    try {
+      final offUri = Uri.parse('https://world.openfoodfacts.org/api/v0/product/$digits.json');
+      final offResponse = await http.get(offUri, headers: {'User-Agent': 'Medistock/1.0'}).timeout(
+        const Duration(seconds: 6),
+        onTimeout: () => http.Response('', 408),
+      );
+      if (offResponse.statusCode == 200) {
+        final offDecoded = json.decode(offResponse.body);
+        if (offDecoded is Map<String, dynamic> && offDecoded['status'] == 1) {
+          final product = offDecoded['product'] as Map<String, dynamic>?;
+          if (product != null) {
+            final name = (product['product_name_fr'] as String?)?.trim() ??
+                (product['product_name'] as String?)?.trim();
+            if (name != null && name.isNotEmpty) {
+              final results = await searchByName(name);
+              if (results.isNotEmpty) {
+                return MedicationApiLookupResult(data: results.first);
+              }
+            }
+          }
+        }
+      }
+      return const MedicationApiLookupResult(error: ApiError(ApiErrorType.unknown, 'Introuvable'));
+    } on http.ClientException catch (e) {
+      return MedicationApiLookupResult(error: ApiError(ApiErrorType.network, e.message));
+    } catch (e) {
+      return MedicationApiLookupResult(error: ApiError(ApiErrorType.unknown, e.toString()));
+    }
+  }
+
   /// Recherche par nom (1 à 6 mots, min 3 caractères). Pour l'autocomplétion à la saisie.
   Future<List<MedicationApiResult>> searchByName(String query) async {
     final term = query.trim();

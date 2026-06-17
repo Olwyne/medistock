@@ -163,7 +163,8 @@ class _ScanScreenState extends State<ScanScreen> {
     if (cipToLookup != null) {
       final lookup = await MedicationApiService().lookupByCip(cipToLookup);
       if (!mounted) return;
-      if (lookup.error != null) {
+      if (lookup.error != null && lookup.error!.type != ApiErrorType.unknown) {
+        // Erreur réseau/serveur réelle → avertir l'utilisateur
         apiFailed = true;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -178,6 +179,21 @@ class _ScanScreenState extends State<ScanScreen> {
         suggestedUnite = lookup.data!.suggestedUnite;
         suggestedQuantiteParUnite = lookup.data!.suggestedQuantiteParUnite;
         suggestedDci = lookup.data!.dci;
+      } else {
+        // CIP not found → fallback Open Food Facts + searchByName
+        final eanForOff = result.gtin?.substring(1) ?? cipToLookup;
+        final fallback = await MedicationApiService().lookupByEanFallback(eanForOff);
+        if (!mounted) return;
+        if (fallback.data != null) {
+          nameToSuggest = fallback.data!.nom;
+          suggestedForme = fallback.data!.formePharmaceutique;
+          suggestedUnite = fallback.data!.suggestedUnite;
+          suggestedQuantiteParUnite = fallback.data!.suggestedQuantiteParUnite;
+          suggestedDci = fallback.data!.dci;
+        } else {
+          // Pas trouvé nulle part → nom vide pour que l'autocomplete soit utilisable
+          nameToSuggest = null;
+        }
       }
     }
     if (!mounted) return;

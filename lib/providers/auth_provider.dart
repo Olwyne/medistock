@@ -57,6 +57,8 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> _onAuthChange() async {
+    _loading = true;
+    notifyListeners();
     if (!_auth.isSignedIn) {
       _currentFamilyId = null;
     } else {
@@ -69,6 +71,7 @@ class AuthProvider with ChangeNotifier {
         }
       }
     }
+    _loading = false;
     notifyListeners();
   }
 
