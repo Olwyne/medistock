@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import '../data/database.dart';
+import '../data/firestore_repository.dart';
 import '../models/family_member.dart';
 import '../models/place.dart';
 import 'auth_provider.dart';
@@ -15,6 +15,7 @@ class FamilyProvider extends ChangeNotifier {
     final auth = _auth;
     if (auth != null && !auth.isSignedIn) clear();
   }
+
   List<FamilyMember> _members = [];
   List<Place> _places = [];
 
@@ -22,12 +23,6 @@ class FamilyProvider extends ChangeNotifier {
   List<Place> get places => List.unmodifiable(_places);
 
   Future<void> load() async {
-    if (kIsWeb) {
-      _members = [];
-      _places = [];
-      notifyListeners();
-      return;
-    }
     final familyId = _auth?.currentFamilyId;
     if (familyId == null) {
       _members = [];
@@ -35,37 +30,38 @@ class FamilyProvider extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    _members = await AppDatabase.getFamilyMembers(familyId: familyId);
-    _places = await AppDatabase.getPlaces(familyId: familyId);
+    await _auth?.ensureSelfMember();
+    _members = await FirestoreRepository.getFamilyMembers(familyId);
+    _places = await FirestoreRepository.getPlaces(familyId);
     notifyListeners();
   }
 
   Future<void> addMember(String name) async {
-    if (kIsWeb) return;
     final familyId = _auth?.currentFamilyId;
     if (familyId == null) return;
     final order = _members.isEmpty ? 0 : (_members.map((e) => e.sortOrder).reduce((a, b) => a > b ? a : b) + 1);
-    await AppDatabase.insertFamilyMember(FamilyMember(id: 0, name: name, sortOrder: order), familyId: familyId);
+    await FirestoreRepository.insertFamilyMember(familyId, FamilyMember(id: '', name: name, sortOrder: order));
     await load();
   }
 
-  Future<void> deleteMember(int id) async {
-    if (kIsWeb) return;
-    await AppDatabase.deleteFamilyMember(id);
+  Future<void> deleteMember(String id) async {
+    final familyId = _auth?.currentFamilyId;
+    if (familyId == null) return;
+    await FirestoreRepository.deleteFamilyMember(familyId, id);
     await load();
   }
 
   Future<void> addPlace(String name) async {
-    if (kIsWeb) return;
     final familyId = _auth?.currentFamilyId;
     if (familyId == null) return;
-    await AppDatabase.insertPlace(Place(id: 0, name: name), familyId: familyId);
+    await FirestoreRepository.insertPlace(familyId, Place(id: '', name: name));
     await load();
   }
 
-  Future<void> deletePlace(int id) async {
-    if (kIsWeb) return;
-    await AppDatabase.deletePlace(id);
+  Future<void> deletePlace(String id) async {
+    final familyId = _auth?.currentFamilyId;
+    if (familyId == null) return;
+    await FirestoreRepository.deletePlace(familyId, id);
     await load();
   }
 

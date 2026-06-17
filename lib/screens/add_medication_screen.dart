@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import '../data/dci_indications.dart';
+import '../data/indication_tags.dart';
 import '../l10n/app_localizations.dart';
 import '../models/medication.dart';
 import '../models/medication_units.dart';
@@ -10,6 +13,9 @@ import '../providers/auth_provider.dart';
 import '../providers/family_provider.dart';
 import '../providers/medication_provider.dart';
 import '../services/interactions_service.dart';
+import '../services/medication_api_service.dart';
+import '../theme/cocon_theme.dart';
+import '../widgets/cocon/cocon.dart';
 
 class AddMedicationScreen extends StatefulWidget {
   final String? codeScanned;
@@ -17,6 +23,7 @@ class AddMedicationScreen extends StatefulWidget {
   final String? suggestedForme;
   final String? suggestedUnite;
   final int? suggestedQuantiteParUnite;
+  final String? suggestedDci;
   final String? noticeUrl;
   final Medication? editing;
 
@@ -27,6 +34,7 @@ class AddMedicationScreen extends StatefulWidget {
     this.suggestedForme,
     this.suggestedUnite,
     this.suggestedQuantiteParUnite,
+    this.suggestedDci,
     this.noticeUrl,
     this.editing,
   });
@@ -42,11 +50,19 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
   late TextEditingController _lieuController;
   late TextEditingController _seuilController;
   late TextEditingController _quantiteParUniteController;
+  late TextEditingController _dciController;
+  late TextEditingController _indicationController;
+  String? _selectedIndicationTag;
+  late TextEditingController _posologieController;
+  late TextEditingController _precautionsController;
   DateTime? _datePeremption;
   bool _saving = false;
   late String _unite;
-  int? _memberId;
+  List<String> _memberIds = [];
   String? _photoPath;
+  Timer? _nameDebounce;
+  List<MedicationApiResult> _suggestions = [];
+  bool _searchingName = false;
 
   bool get isEditing => widget.editing != null;
 
@@ -55,6 +71,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     super.initState();
     final e = widget.editing;
     _nomController = TextEditingController(text: e?.nom ?? widget.suggestedName ?? '');
+    _nomController.addListener(_onNameChanged);
     _quantiteController = TextEditingController(text: e?.quantite.toString() ?? '1');
     // Unité : édition > API (suggestedUnite) > forme pharmaceutique > défaut
     final uniteFromApi = widget.suggestedUnite != null && MedicationUnits.all.contains(widget.suggestedUnite)
@@ -64,7 +81,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     _unite = MedicationUnits.all.contains(suggestedUnite) ? suggestedUnite : MedicationUnits.plaquette;
     _lieuController = TextEditingController(text: e?.lieu ?? '');
     _seuilController = TextEditingController(text: e?.seuilAlerte.toString() ?? '0');
-    _memberId = e?.memberId;
+    _memberIds = List.of(e?.memberIds ?? const []);
     // Quantité par unité : édition > API (suggestedQuantiteParUnite) > vide
     final qteParUnite = e?.quantiteParUnite ?? widget.suggestedQuantiteParUnite;
     _quantiteParUniteController = TextEditingController(
@@ -72,16 +89,79 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     );
     _datePeremption = e?.datePeremption;
     _photoPath = e?.photoPath;
+    final dci = e?.dci ?? widget.suggestedDci;
+    _dciController = TextEditingController(text: dci ?? '');
+    final existingIndication = e?.indication ?? (e == null ? suggestIndicationFromDci(dci) : null);
+    if (existingIndication != null && kIndicationTags.any((t) => t.toLowerCase() == existingIndication.toLowerCase())) {
+      _selectedIndicationTag = kIndicationTags.firstWhere((t) => t.toLowerCase() == existingIndication.toLowerCase());
+      _indicationController = TextEditingController();
+    } else {
+      _indicationController = TextEditingController(text: existingIndication ?? '');
+    }
+    _posologieController = TextEditingController(text: e?.posologie ?? '');
+    _precautionsController = TextEditingController(text: e?.precautions ?? '');
   }
 
   @override
   void dispose() {
+    _nameDebounce?.cancel();
     _nomController.dispose();
     _quantiteController.dispose();
     _lieuController.dispose();
     _seuilController.dispose();
     _quantiteParUniteController.dispose();
+    _dciController.dispose();
+    _indicationController.dispose();
+    _posologieController.dispose();
+    _precautionsController.dispose();
     super.dispose();
+  }
+
+  void _onNameChanged() {
+    _nameDebounce?.cancel();
+    final query = _nomController.text;
+    if (query.trim().length < 3) {
+      setState(() => _suggestions = []);
+      return;
+    }
+    _nameDebounce = Timer(const Duration(milliseconds: 400), () async {
+      setState(() => _searchingName = true);
+      final results = await MedicationApiService().searchByName(query);
+      if (!mounted) return;
+      setState(() {
+        _suggestions = results;
+        _searchingName = false;
+      });
+    });
+  }
+
+  void _applySuggestion(MedicationApiResult r) {
+    _nameDebounce?.cancel();
+    _nomController.removeListener(_onNameChanged);
+    _nomController.text = r.nom;
+    _nomController.addListener(_onNameChanged);
+    if (r.suggestedUnite != null && MedicationUnits.all.contains(r.suggestedUnite)) {
+      setState(() => _unite = r.suggestedUnite!);
+    }
+    if (r.suggestedQuantiteParUnite != null) {
+      _quantiteParUniteController.text = r.suggestedQuantiteParUnite.toString();
+    }
+    if (r.dci != null) {
+      _dciController.text = r.dci!;
+      if (_selectedIndicationTag == null && _indicationController.text.trim().isEmpty) {
+        final suggestion = suggestIndicationFromDci(r.dci);
+        if (suggestion != null) {
+          final matchedTag = kIndicationTags.where((t) => t.toLowerCase() == suggestion.toLowerCase()).firstOrNull;
+          if (matchedTag != null) {
+            setState(() => _selectedIndicationTag = matchedTag);
+          } else {
+            _indicationController.text = suggestion;
+          }
+        }
+      }
+    }
+    setState(() => _suggestions = []);
+    FocusScope.of(context).unfocus();
   }
 
   Future<void> _save() async {
@@ -99,6 +179,11 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     final quantiteParUnite = int.tryParse(_quantiteParUniteController.text);
     final lieu = _lieuController.text.trim().isEmpty ? null : _lieuController.text.trim();
     final seuil = int.tryParse(_seuilController.text) ?? 0;
+
+    final familyProvider = context.read<FamilyProvider>();
+    if (lieu != null && !familyProvider.places.any((p) => p.name.toLowerCase() == lieu.toLowerCase())) {
+      await familyProvider.addPlace(lieu);
+    }
 
     final familyId = context.read<AuthProvider>().currentFamilyId;
     final hasInteraction = await InteractionsService.hasPossibleInteraction(nom, familyId: familyId);
@@ -127,6 +212,11 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
       }
     }
 
+    final dci = _dciController.text.trim().isEmpty ? null : _dciController.text.trim();
+    final indication = _selectedIndicationTag ?? (_indicationController.text.trim().isEmpty ? null : _indicationController.text.trim());
+    final posologie = _posologieController.text.trim().isEmpty ? null : _posologieController.text.trim();
+    final precautions = _precautionsController.text.trim().isEmpty ? null : _precautionsController.text.trim();
+
     if (isEditing) {
       await provider.update(widget.editing!.copyWith(
         nom: nom,
@@ -134,10 +224,14 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
         unite: unite,
         quantiteParUnite: quantiteParUnite,
         lieu: lieu,
-        memberId: _memberId,
+        memberIds: _memberIds,
         datePeremption: _datePeremption,
         seuilAlerte: seuil,
         photoPath: _photoPath,
+        dci: dci,
+        indication: indication,
+        posologie: posologie,
+        precautions: precautions,
       ));
     } else {
       final familyId = context.read<AuthProvider>().currentFamilyId;
@@ -149,11 +243,15 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
           unite: unite,
           quantiteParUnite: quantiteParUnite,
           lieu: lieu,
-          memberId: _memberId,
+          memberIds: _memberIds,
           datePeremption: _datePeremption,
           seuilAlerte: seuil,
           noticeUrl: widget.noticeUrl,
           photoPath: _photoPath,
+          dci: dci,
+          indication: indication,
+          posologie: posologie,
+          precautions: precautions,
         ),
         familyId: familyId,
       );
@@ -169,24 +267,68 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     final l10n = AppLocalizations.of(context);
     final familyProvider = context.watch<FamilyProvider>();
     return Scaffold(
-      appBar: AppBar(
-        title: Text(isEditing ? l10n.editMedicationTitle : l10n.addMedicationTitle),
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
+      backgroundColor: CoconColors.bg,
+      body: Column(
+        children: [
+          CoconScreenHeader(
+            title: isEditing ? l10n.editMedicationTitle : l10n.addMedicationTitle,
+            onBack: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(18),
+                children: [
             TextFormField(
               controller: _nomController,
               decoration: InputDecoration(
                 labelText: l10n.medicationName,
                 hintText: l10n.medicationNameHint,
-                border: const OutlineInputBorder(),
+                suffixIcon: _searchingName
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                      )
+                    : null,
               ),
               textCapitalization: TextCapitalization.sentences,
               validator: (v) => v?.trim().isEmpty ?? true ? l10n.required : null,
             ),
+            if (_suggestions.isNotEmpty)
+              SoftCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < _suggestions.length; i++)
+                      InkWell(
+                        onTap: () => _applySuggestion(_suggestions[i]),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                          decoration: BoxDecoration(
+                            border: i < _suggestions.length - 1 ? const Border(bottom: BorderSide(color: CoconColors.line)) : null,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(_suggestions[i].nom, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    if (_suggestions[i].formePharmaceutique != null)
+                                      Text(_suggestions[i].formePharmaceutique!, style: const TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w600, fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.north_west, size: 16, color: CoconColors.muted),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 12),
             if (_photoPath != null) ...[
               Semantics(
@@ -236,8 +378,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                     controller: _quantiteController,
                     decoration: InputDecoration(
                       labelText: l10n.quantity,
-                      border: const OutlineInputBorder(),
-                    ),
+                          ),
                     keyboardType: TextInputType.number,
                     validator: (v) {
                       final n = int.tryParse(v ?? '');
@@ -253,8 +394,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                     value: _unite,
                     decoration: InputDecoration(
                       labelText: l10n.unit,
-                      border: const OutlineInputBorder(),
-                    ),
+                          ),
                     items: MedicationUnits.all
                         .map((u) => DropdownMenuItem(value: u, child: Text(u)))
                         .toList(),
@@ -271,57 +411,91 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
               decoration: InputDecoration(
                 labelText: l10n.quantityPerUnit,
                 hintText: l10n.quantityPerUnitHint,
-                border: const OutlineInputBorder(),
               ),
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _dciController,
+              decoration: const InputDecoration(
+                labelText: 'Substance (DCI)',
+                hintText: 'ex. Paracétamol',
+              ),
+            ),
             if (familyProvider.members.isNotEmpty) ...[
               const SizedBox(height: 16),
-              DropdownButtonFormField<int?>(
-                value: _memberId,
-                decoration: InputDecoration(
-                  labelText: l10n.family,
-                  border: const OutlineInputBorder(),
-                ),
-                items: [
-                  const DropdownMenuItem<int?>(value: null, child: Text('—')),
-                  ...familyProvider.members.map(
-                    (m) => DropdownMenuItem<int?>(value: m.id, child: Text(m.name)),
-                  ),
-                ],
-                onChanged: (v) => setState(() => _memberId = v),
+              Text(l10n.forWhom, style: const TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w800, fontSize: 12.5)),
+              const SizedBox(height: 7),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: familyProvider.members.map((m) {
+                  final selected = _memberIds.contains(m.id);
+                  return FilterChip(
+                    label: Text(m.name),
+                    selected: selected,
+                    onSelected: (v) => setState(() {
+                      if (v) {
+                        _memberIds.add(m.id);
+                      } else {
+                        _memberIds.remove(m.id);
+                      }
+                    }),
+                  );
+                }).toList(),
               ),
             ],
-            if (familyProvider.places.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String?>(
-                value: familyProvider.places.any((p) => p.name == _lieuController.text.trim())
-                    ? _lieuController.text.trim()
-                    : null,
-                decoration: InputDecoration(
-                  labelText: l10n.place,
-                  border: const OutlineInputBorder(),
-                ),
-                items: [
-                  const DropdownMenuItem<String?>(value: null, child: Text('—')),
-                  ...familyProvider.places.map(
-                    (p) => DropdownMenuItem<String?>(value: p.name, child: Text(p.name)),
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String?>(
+                    value: familyProvider.places.any((p) => p.name == _lieuController.text.trim())
+                        ? _lieuController.text.trim()
+                        : null,
+                    decoration: InputDecoration(labelText: l10n.placeStorage),
+                    items: [
+                      const DropdownMenuItem<String?>(value: null, child: Text('—')),
+                      ...familyProvider.places.map(
+                        (p) => DropdownMenuItem<String?>(value: p.name, child: Text(p.name)),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => _lieuController.text = v ?? ''),
                   ),
-                ],
-                onChanged: (v) {
-                  _lieuController.text = v ?? '';
-                  setState(() {});
-                },
-              ),
-            ],
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _lieuController,
-              decoration: InputDecoration(
-                labelText: l10n.placeStorage,
-                hintText: l10n.placeStorageHint,
-                border: const OutlineInputBorder(),
-              ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.add_circle_outline),
+                  tooltip: 'Ajouter un lieu',
+                  onPressed: () async {
+                    final ctrl = TextEditingController();
+                    final name = await showDialog<String>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Nouveau lieu'),
+                        content: TextField(
+                          controller: ctrl,
+                          autofocus: true,
+                          decoration: const InputDecoration(hintText: 'ex. Armoire salle de bain'),
+                          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+                        ),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+                            child: const Text('Ajouter'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (name != null && name.isNotEmpty) {
+                      await familyProvider.addPlace(name);
+                      setState(() => _lieuController.text = name);
+                    }
+                  },
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -329,7 +503,6 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
               decoration: InputDecoration(
                 labelText: l10n.alertStockMin,
                 hintText: l10n.alertStockHint,
-                border: const OutlineInputBorder(),
               ),
               keyboardType: TextInputType.number,
             ),
@@ -356,14 +529,72 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                 onPressed: () => setState(() => _datePeremption = null),
                 child: Text(l10n.removeDate),
               ),
-            const SizedBox(height: 32),
-            FilledButton(
-              onPressed: _saving ? null : _save,
-              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
-              child: _saving ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(strokeWidth: 2)) : Text(l10n.save),
+            const SizedBox(height: 24),
+            const Text('Infos santé', style: TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w800, fontSize: 12.5)),
+            const SizedBox(height: 7),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                ...kIndicationTags.map((tag) {
+                  final active = _selectedIndicationTag == tag;
+                  return InkWell(
+                    onTap: () => setState(() {
+                      _selectedIndicationTag = active ? null : tag;
+                    }),
+                    borderRadius: BorderRadius.circular(99),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: active ? CoconColors.ink : CoconColors.surface,
+                        borderRadius: BorderRadius.circular(99),
+                        border: Border.all(color: active ? CoconColors.ink : CoconColors.line, width: 1.5),
+                      ),
+                      child: Text(
+                        tag,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: active ? Colors.white : CoconColors.muted,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
             ),
-          ],
-        ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _indicationController,
+              decoration: const InputDecoration(
+                labelText: 'Autre indication',
+                hintText: 'ex. maux de tête, douleurs articulaires...',
+              ),
+              onChanged: (_) => setState(() => _selectedIndicationTag = null),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _posologieController,
+              decoration: const InputDecoration(labelText: 'Posologie'),
+              maxLines: 2,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _precautionsController,
+              decoration: const InputDecoration(labelText: 'Effets secondaires / précautions'),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 32),
+            PrimaryButton(
+              label: l10n.save,
+              icon: _saving ? null : Icons.check,
+              onPressed: _saving ? null : _save,
+            ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

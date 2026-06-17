@@ -1,8 +1,9 @@
-/// Modèle représentant un médicament dans l'inventaire.
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+/// Modèle représentant un médicament dans l'inventaire (doc Firestore).
 class Medication {
-  final int? id;
-  /// UUID Supabase (sync), null en local seul.
-  final String? serverId;
+  /// Id du document Firestore. Null avant la première sauvegarde.
+  final String? id;
   final String codeScanned;
   final String nom;
   final int quantite;
@@ -10,14 +11,17 @@ class Medication {
   final int? quantiteParUnite; // ex: 30 comprimés par plaquette
   final DateTime? datePeremption;
   final String? lieu;
-  final int? memberId;
+  final List<String> memberIds;
   final int seuilAlerte;
   final String? noticeUrl;
   final String? photoPath;
+  final String? dci; // substance(s) active(s) / ingrédient
+  final String? indication; // à quoi ça sert (maux de tête, antibiotique...)
+  final String? posologie;
+  final String? precautions; // effets secondaires / précautions d'usage
 
   const Medication({
     this.id,
-    this.serverId,
     required this.codeScanned,
     required this.nom,
     required this.quantite,
@@ -25,15 +29,18 @@ class Medication {
     this.quantiteParUnite,
     this.datePeremption,
     this.lieu,
-    this.memberId,
+    this.memberIds = const [],
     this.seuilAlerte = 0,
     this.noticeUrl,
     this.photoPath,
+    this.dci,
+    this.indication,
+    this.posologie,
+    this.precautions,
   });
 
   Medication copyWith({
-    int? id,
-    String? serverId,
+    String? id,
     String? codeScanned,
     String? nom,
     int? quantite,
@@ -41,14 +48,17 @@ class Medication {
     int? quantiteParUnite,
     DateTime? datePeremption,
     String? lieu,
-    int? memberId,
+    List<String>? memberIds,
     int? seuilAlerte,
     String? noticeUrl,
     String? photoPath,
+    String? dci,
+    String? indication,
+    String? posologie,
+    String? precautions,
   }) {
     return Medication(
       id: id ?? this.id,
-      serverId: serverId ?? this.serverId,
       codeScanned: codeScanned ?? this.codeScanned,
       nom: nom ?? this.nom,
       quantite: quantite ?? this.quantite,
@@ -56,48 +66,56 @@ class Medication {
       quantiteParUnite: quantiteParUnite ?? this.quantiteParUnite,
       datePeremption: datePeremption ?? this.datePeremption,
       lieu: lieu ?? this.lieu,
-      memberId: memberId ?? this.memberId,
+      memberIds: memberIds ?? this.memberIds,
       seuilAlerte: seuilAlerte ?? this.seuilAlerte,
       noticeUrl: noticeUrl ?? this.noticeUrl,
       photoPath: photoPath ?? this.photoPath,
+      dci: dci ?? this.dci,
+      indication: indication ?? this.indication,
+      posologie: posologie ?? this.posologie,
+      precautions: precautions ?? this.precautions,
     );
   }
 
-  Map<String, dynamic> toMap() {
+  Map<String, dynamic> toFirestore() {
     return {
-      'id': id,
-      'remote_id': serverId,
-      'code_scanned': codeScanned,
+      'codeScanned': codeScanned,
       'nom': nom,
       'quantite': quantite,
       'unite': unite,
-      'quantite_par_unite': quantiteParUnite,
-      'date_peremption': datePeremption?.toIso8601String(),
+      'quantiteParUnite': quantiteParUnite,
+      'datePeremption': datePeremption != null ? Timestamp.fromDate(datePeremption!) : null,
       'lieu': lieu,
-      'member_id': memberId,
-      'seuil_alerte': seuilAlerte,
-      'notice_url': noticeUrl,
-      'photo_path': photoPath,
+      'memberIds': memberIds,
+      'seuilAlerte': seuilAlerte,
+      'noticeUrl': noticeUrl,
+      'photoPath': photoPath,
+      'dci': dci,
+      'indication': indication,
+      'posologie': posologie,
+      'precautions': precautions,
     };
   }
 
-  factory Medication.fromMap(Map<String, dynamic> map) {
+  factory Medication.fromFirestore(String id, Map<String, dynamic> data) {
     return Medication(
-      id: map['id'] as int?,
-      serverId: map['remote_id'] as String?,
-      codeScanned: map['code_scanned'] as String,
-      nom: map['nom'] as String,
-      quantite: map['quantite'] as int,
-      unite: map['unite'] as String? ?? 'Plaquette',
-      quantiteParUnite: map['quantite_par_unite'] as int?,
-      datePeremption: map['date_peremption'] != null
-          ? DateTime.parse(map['date_peremption'] as String)
-          : null,
-      lieu: map['lieu'] as String?,
-      memberId: map['member_id'] as int?,
-      seuilAlerte: map['seuil_alerte'] as int? ?? 0,
-      noticeUrl: map['notice_url'] as String?,
-      photoPath: map['photo_path'] as String?,
+      id: id,
+      codeScanned: data['codeScanned'] as String? ?? '',
+      nom: data['nom'] as String,
+      quantite: data['quantite'] as int,
+      unite: data['unite'] as String? ?? 'Plaquette',
+      quantiteParUnite: data['quantiteParUnite'] as int?,
+      datePeremption: (data['datePeremption'] as Timestamp?)?.toDate(),
+      lieu: data['lieu'] as String?,
+      memberIds: (data['memberIds'] as List?)?.cast<String>() ??
+          (data['memberId'] != null ? [data['memberId'] as String] : const []),
+      seuilAlerte: data['seuilAlerte'] as int? ?? 0,
+      noticeUrl: data['noticeUrl'] as String?,
+      photoPath: data['photoPath'] as String?,
+      dci: data['dci'] as String?,
+      indication: data['indication'] as String?,
+      posologie: data['posologie'] as String?,
+      precautions: data['precautions'] as String?,
     );
   }
 

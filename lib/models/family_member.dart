@@ -1,5 +1,5 @@
 class FamilyMember {
-  final int id;
+  final String id;
   final String name;
   final int sortOrder;
 
@@ -9,15 +9,14 @@ class FamilyMember {
     this.sortOrder = 0,
   });
 
-  Map<String, dynamic> toMap() => {
-        'id': id,
+  Map<String, dynamic> toFirestore() => {
         'name': name,
-        'sort_order': sortOrder,
+        'sortOrder': sortOrder,
       };
 
-  factory FamilyMember.fromMap(Map<String, dynamic> m) => FamilyMember(
-        id: m['id'] as int,
-        name: m['name'] as String,
-        sortOrder: m['sort_order'] as int? ?? 0,
+  factory FamilyMember.fromFirestore(String id, Map<String, dynamic> data) => FamilyMember(
+        id: id,
+        name: data['name'] as String,
+        sortOrder: data['sortOrder'] as int? ?? 0,
       );
 }

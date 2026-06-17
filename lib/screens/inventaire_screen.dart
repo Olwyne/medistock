@@ -1,13 +1,15 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../data/indication_tags.dart';
 import '../l10n/app_localizations.dart';
 import '../models/medication.dart';
 import '../providers/family_provider.dart';
 import '../providers/medication_provider.dart';
+import '../theme/cocon_theme.dart';
+import '../widgets/cocon/cocon.dart';
 import 'medication_detail_screen.dart';
 import 'add_medication_screen.dart';
 
@@ -33,7 +35,8 @@ class _InventaireScreenState extends State<InventaireScreen> {
   InventaireSort _sort = InventaireSort.nom;
   InventaireFilter _filter = InventaireFilter.tous;
   String? _lieuFilter;
-  int? _memberFilter;
+  String? _memberFilter;
+  String? _indicationFilter;
 
   @override
   void dispose() {
@@ -55,13 +58,9 @@ class _InventaireScreenState extends State<InventaireScreen> {
         m.seuilAlerte,
       ].join(sep));
     }
-    final csv = sb.toString();
-    Clipboard.setData(ClipboardData(text: csv));
+    Clipboard.setData(ClipboardData(text: sb.toString()));
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(AppLocalizations.of(context).exportCsvCopied),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(AppLocalizations.of(context).exportCsvCopied), behavior: SnackBarBehavior.floating),
     );
   }
 
@@ -75,7 +74,10 @@ class _InventaireScreenState extends State<InventaireScreen> {
       if (_filter == InventaireFilter.bientotPerime && !m.estBientotPerime) return false;
       if (_filter == InventaireFilter.stockFaible && !m.stockFaible) return false;
       if (_lieuFilter != null && m.lieu != _lieuFilter) return false;
-      if (_memberFilter != null && m.memberId != _memberFilter) return false;
+      if (_memberFilter != null && !m.memberIds.contains(_memberFilter)) return false;
+      if (_indicationFilter != null &&
+          (m.indication == null ||
+              !m.indication!.toLowerCase().contains(_indicationFilter!.toLowerCase()))) return false;
       return true;
     }).toList();
 
@@ -98,309 +100,271 @@ class _InventaireScreenState extends State<InventaireScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.inventaireTitle),
-        actions: [
-          PopupMenuButton<InventaireSort>(
-            icon: const Icon(Icons.sort),
-            tooltip: l10n.sort,
-            onSelected: (s) => setState(() => _sort = s),
-            itemBuilder: (_) => [
-              PopupMenuItem(value: InventaireSort.nom, child: Text(l10n.sortByName)),
-              PopupMenuItem(value: InventaireSort.quantite, child: Text(l10n.sortByQuantity)),
-              PopupMenuItem(value: InventaireSort.peremption, child: Text(l10n.sortByExpiry)),
-            ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.upload_file),
-            tooltip: l10n.exportCsv,
-            onPressed: () => _exportCsv(context, context.read<MedicationProvider>().medications),
-          ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const AddMedicationScreen(),
-              ),
-            ),
-          ),
-        ],
-      ),
+      backgroundColor: CoconColors.bg,
       body: Consumer<MedicationProvider>(
         builder: (context, provider, _) {
-          if (provider.loading && provider.medications.isEmpty) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (provider.error != null) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(provider.error!, textAlign: TextAlign.center),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: () => provider.load(),
-                    child: Text(l10n.retry),
-                  ),
-                ],
-              ),
-            );
-          }
-          if (provider.medications.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.medication_liquid_outlined, size: 80, color: Theme.of(context).colorScheme.outline),
-                  const SizedBox(height: 16),
-                  Text(
-                    l10n.noMedication,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    l10n.noMedicationHint,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.outline),
-                  ),
-                  const SizedBox(height: 24),
-                  Semantics(
-                    label: l10n.addMedication,
-                    button: true,
-                    child: FilledButton.icon(
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const AddMedicationScreen()),
-                      ),
-                      icon: const Icon(Icons.add),
-                      label: Text(l10n.addMedication),
-                      style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
+          return Column(
+            children: [
+              CoconScreenHeader(
+                title: l10n.inventaireTitle,
+                eyebrow: '${provider.medications.length} ${l10n.medications.toLowerCase()}',
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RoundIconButton(
+                      icon: Icons.sort,
+                      onTap: () => _showSortMenu(context),
                     ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          final filtered = _applyFilterSort(provider.medications);
-          final lieux = provider.medications
-              .map((m) => m.lieu)
-              .where((l) => l != null && l.isNotEmpty)
-              .toSet()
-              .cast<String>()
-              .toList()
-            ..sort();
-          final familyProvider = context.watch<FamilyProvider>();
-          final memberIdsInUse = provider.medications.map((m) => m.memberId).whereType<int>().toSet();
-          final membersInUse = familyProvider.members.where((m) => memberIdsInUse.contains(m.id)).toList();
-
-          return RefreshIndicator(
-            onRefresh: () => provider.load(),
-            child: CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    child: _DashboardSummary(provider: provider),
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: TextField(
-                      controller: _searchController,
-                      decoration: InputDecoration(
-                        hintText: l10n.searchHint,
-                        prefixIcon: const Icon(Icons.search),
-                        border: const OutlineInputBorder(),
-                        suffixIcon: _searchQuery.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() => _searchQuery = '');
-                                },
-                              )
-                            : null,
-                      ),
-                      onChanged: (v) => setState(() => _searchQuery = v),
+                    const SizedBox(width: 8),
+                    RoundIconButton(
+                      icon: Icons.upload_file_outlined,
+                      onTap: () => _exportCsv(context, provider.medications),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    RoundIconButton(
+                      icon: Icons.add,
+                      background: CoconColors.accent,
+                      color: Colors.white,
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AddMedicationScreen())),
+                    ),
+                  ],
                 ),
-                SliverToBoxAdapter(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        _FilterChip(
-                          label: l10n.filterAll,
-                          selected: _filter == InventaireFilter.tous && _lieuFilter == null,
-                          onSelected: () => setState(() {
-                            _filter = InventaireFilter.tous;
-                            _lieuFilter = null;
-                          }),
-                        ),
-                        const SizedBox(width: 8),
-                        _FilterChip(
-                          label: l10n.filterSoonExpiry,
-                          selected: _filter == InventaireFilter.bientotPerime,
-                          onSelected: () => setState(() {
-                            _filter = InventaireFilter.bientotPerime;
-                            _lieuFilter = null;
-                          }),
-                        ),
-                        const SizedBox(width: 8),
-                        _FilterChip(
-                          label: l10n.filterLowStock,
-                          selected: _filter == InventaireFilter.stockFaible,
-                          onSelected: () => setState(() {
-                            _filter = InventaireFilter.stockFaible;
-                            _lieuFilter = null;
-                          }),
-                        ),
-                        if (lieux.isNotEmpty) ...[
-                          const SizedBox(width: 8),
-                          PopupMenuButton<String?>(
-                            tooltip: l10n.place,
-                            offset: const Offset(0, 40),
-                            child: Chip(
-                              label: Text(_lieuFilter ?? l10n.place),
-                              deleteIcon: _lieuFilter != null ? const Icon(Icons.close, size: 18) : null,
-                              onDeleted: _lieuFilter != null ? () => setState(() => _lieuFilter = null) : null,
-                            ),
-                            itemBuilder: (_) => [
-                              ...lieux.map((l) => PopupMenuItem(value: l, child: Text(l))),
-                            ],
-                            onSelected: (v) => setState(() => _lieuFilter = v),
-                          ),
+              ),
+              Expanded(
+                child: Builder(builder: (context) {
+                  if (provider.loading && provider.medications.isEmpty) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (provider.error != null) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(provider.error!, textAlign: TextAlign.center, style: const TextStyle(color: CoconColors.muted)),
+                          const SizedBox(height: 16),
+                          PrimaryButton(label: l10n.retry, onPressed: () => provider.load(), full: false),
                         ],
-                        if (membersInUse.isNotEmpty) ...[
-                          const SizedBox(width: 8),
-                          PopupMenuButton<int?>(
-                            tooltip: l10n.family,
-                            offset: const Offset(0, 40),
-                            child: Chip(
-                              label: Text(
-                                _memberFilter == null
-                                    ? l10n.family
-                                    : () {
-                                        final list = familyProvider.members.where((m) => m.id == _memberFilter).toList();
-                                        return list.isEmpty ? l10n.family : list.first.name;
-                                      }(),
+                      ),
+                    );
+                  }
+                  if (provider.medications.isEmpty) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const CatAvatar(icon: Icons.medication_liquid_outlined, size: 80),
+                            const SizedBox(height: 16),
+                            Text(l10n.noMedication, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17, color: CoconColors.ink)),
+                            const SizedBox(height: 8),
+                            Text(l10n.noMedicationHint, style: const TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
+                            const SizedBox(height: 24),
+                            PrimaryButton(
+                              label: l10n.addMedication,
+                              icon: Icons.add,
+                              full: false,
+                              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AddMedicationScreen())),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  final filtered = _applyFilterSort(provider.medications);
+                  final lieux = provider.medications.map((m) => m.lieu).where((l) => l != null && l.isNotEmpty).toSet().cast<String>().toList()..sort();
+                  final familyProvider = context.watch<FamilyProvider>();
+                  final memberIdsInUse = provider.medications.expand((m) => m.memberIds).toSet();
+                  final membersInUse = familyProvider.members.where((m) => memberIdsInUse.contains(m.id)).toList();
+                  final indicationsInInventory = provider.medications
+                      .map((m) => m.indication?.trim())
+                      .whereType<String>()
+                      .where((s) => s.isNotEmpty)
+                      .toSet();
+                  final indicationChips = kIndicationTags
+                      .where((tag) => indicationsInInventory.any(
+                            (ind) => ind.toLowerCase().contains(tag.toLowerCase()),
+                          ))
+                      .toList();
+                  // Indications personnalisées non présentes dans kIndicationTags
+                  final customIndications = indicationsInInventory
+                      .where((ind) => !kIndicationTags.any(
+                            (tag) => ind.toLowerCase().contains(tag.toLowerCase()),
+                          ))
+                      .toList()
+                    ..sort();
+
+                  return RefreshIndicator(
+                    onRefresh: () => provider.load(),
+                    child: CustomScrollView(
+                      slivers: [
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+                            child: TextField(
+                              controller: _searchController,
+                              decoration: InputDecoration(
+                                hintText: l10n.searchHint,
+                                prefixIcon: const Icon(Icons.search, color: CoconColors.muted),
+                                suffixIcon: _searchQuery.isNotEmpty
+                                    ? IconButton(icon: const Icon(Icons.clear), onPressed: () {
+                                        _searchController.clear();
+                                        setState(() => _searchQuery = '');
+                                      })
+                                    : null,
                               ),
-                              deleteIcon: _memberFilter != null ? const Icon(Icons.close, size: 18) : null,
-                              onDeleted: _memberFilter != null ? () => setState(() => _memberFilter = null) : null,
+                              onChanged: (v) => setState(() => _searchQuery = v),
                             ),
-                            itemBuilder: (_) => [
-                              PopupMenuItem<int?>(value: null, child: Text(l10n.filterAll)),
-                              ...membersInUse.map((m) => PopupMenuItem<int?>(value: m.id, child: Text(m.name))),
-                            ],
-                            onSelected: (v) => setState(() => _memberFilter = v),
                           ),
-                        ],
+                        ),
+                        SliverToBoxAdapter(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Ligne 1 : filtres status + famille
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
+                                child: Row(
+                                  children: [
+                                    CoconChip(
+                                      label: l10n.filterAll,
+                                      active: _filter == InventaireFilter.tous &&
+                                          _lieuFilter == null &&
+                                          _memberFilter == null &&
+                                          _indicationFilter == null,
+                                      onTap: () => setState(() {
+                                        _filter = InventaireFilter.tous;
+                                        _lieuFilter = null;
+                                        _memberFilter = null;
+                                        _indicationFilter = null;
+                                      }),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    CoconChip(
+                                      label: l10n.filterSoonExpiry,
+                                      active: _filter == InventaireFilter.bientotPerime,
+                                      onTap: () => setState(() => _filter = _filter == InventaireFilter.bientotPerime ? InventaireFilter.tous : InventaireFilter.bientotPerime),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    CoconChip(
+                                      label: l10n.filterLowStock,
+                                      active: _filter == InventaireFilter.stockFaible,
+                                      onTap: () => setState(() => _filter = _filter == InventaireFilter.stockFaible ? InventaireFilter.tous : InventaireFilter.stockFaible),
+                                    ),
+                                    if (membersInUse.isNotEmpty) ...[
+                                      const SizedBox(width: 8),
+                                      PopupMenuButton<String?>(
+                                        tooltip: l10n.family,
+                                        itemBuilder: (_) => [
+                                          PopupMenuItem<String?>(value: null, child: Text(l10n.filterAll)),
+                                          ...membersInUse.map((m) => PopupMenuItem<String?>(value: m.id, child: Text(m.name))),
+                                        ],
+                                        onSelected: (v) => setState(() => _memberFilter = v),
+                                        child: CoconChip(
+                                          label: _memberFilter == null
+                                              ? l10n.family
+                                              : (membersInUse.where((m) => m.id == _memberFilter).firstOrNull?.name ?? l10n.family),
+                                          active: _memberFilter != null,
+                                          onTap: () {},
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              // Ligne 2 : filtres lieu (chips individuelles)
+                              if (lieux.isNotEmpty)
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  padding: const EdgeInsets.fromLTRB(18, 2, 18, 2),
+                                  child: Row(
+                                    children: lieux.map((lieu) => Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: CoconChip(
+                                        label: lieu,
+                                        active: _lieuFilter == lieu,
+                                        onTap: () => setState(() => _lieuFilter = _lieuFilter == lieu ? null : lieu),
+                                      ),
+                                    )).toList(),
+                                  ),
+                                ),
+                              // Ligne 3 : filtres indication (pills pré-faites présentes dans l'inventaire)
+                              if (indicationChips.isNotEmpty || customIndications.isNotEmpty)
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  padding: const EdgeInsets.fromLTRB(18, 2, 18, 6),
+                                  child: Row(
+                                    children: [
+                                      ...indicationChips.map((tag) => Padding(
+                                        padding: const EdgeInsets.only(right: 8),
+                                        child: CoconChip(
+                                          label: tag,
+                                          active: _indicationFilter == tag,
+                                          onTap: () => setState(() => _indicationFilter = _indicationFilter == tag ? null : tag),
+                                        ),
+                                      )),
+                                      ...customIndications.map((ind) => Padding(
+                                        padding: const EdgeInsets.only(right: 8),
+                                        child: CoconChip(
+                                          label: ind,
+                                          active: _indicationFilter == ind,
+                                          onTap: () => setState(() => _indicationFilter = _indicationFilter == ind ? null : ind),
+                                        ),
+                                      )),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(18, 10, 18, 26),
+                          sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                                final m = filtered[index];
+                                final names = familyProvider.members.where((x) => m.memberIds.contains(x.id)).map((x) => x.name).join(', ');
+                                final memberName = names.isEmpty ? null : names;
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: _MedicationCard(medication: m, memberName: memberName),
+                                );
+                              },
+                              childCount: filtered.length,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                ),
-                SliverPadding(
-                  padding: const EdgeInsets.all(16),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final m = filtered[index];
-                        final memberName = m.memberId == null
-                            ? null
-                            : (() {
-                                final list = familyProvider.members.where((x) => x.id == m.memberId).toList();
-                                return list.isEmpty ? null : list.first.name;
-                              })();
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: _MedicationCard(medication: m, memberName: memberName),
-                        );
-                      },
-                      childCount: filtered.length,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+                  );
+                }),
+              ),
+            ],
           );
         },
       ),
     );
   }
-}
 
-class _DashboardSummary extends StatelessWidget {
-  final MedicationProvider provider;
-
-  const _DashboardSummary({required this.provider});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final total = provider.medications.length;
-    final bientot = provider.bientotPerimes.length;
-    final faible = provider.stockFaible.length;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
+  void _showSortMenu(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: CoconColors.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: Column(
-                children: [
-                  Text('$total', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-                  Text(AppLocalizations.of(context).medications, style: theme.textTheme.bodySmall),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Builder(
-                builder: (ctx) {
-                  final l10n = AppLocalizations.of(ctx);
-                  return Column(
-                    children: [
-                      Text('$bientot', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.tertiary)),
-                      Text(l10n.soonExpiry, style: theme.textTheme.bodySmall),
-                    ],
-                  );
-                },
-              ),
-            ),
-            Expanded(
-              child: Builder(
-                builder: (ctx) {
-                  final l10n = AppLocalizations.of(ctx);
-                  return Column(
-                    children: [
-                      Text('$faible', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.secondary)),
-                      Text(l10n.lowStock, style: theme.textTheme.bodySmall),
-                    ],
-                  );
-                },
-              ),
-            ),
+            ListTile(title: Text(l10n.sortByName), onTap: () { setState(() => _sort = InventaireSort.nom); Navigator.pop(ctx); }),
+            ListTile(title: Text(l10n.sortByQuantity), onTap: () { setState(() => _sort = InventaireSort.quantite); Navigator.pop(ctx); }),
+            ListTile(title: Text(l10n.sortByExpiry), onTap: () { setState(() => _sort = InventaireSort.peremption); Navigator.pop(ctx); }),
+            const SizedBox(height: 8),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onSelected;
-
-  const _FilterChip({required this.label, required this.selected, required this.onSelected});
-
-  @override
-  Widget build(BuildContext context) {
-    return FilterChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => onSelected(),
     );
   }
 }
@@ -413,92 +377,53 @@ class _MedicationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: InkWell(
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => MedicationDetailScreen(medicationId: kIsWeb ? medication.serverId : medication.id),
-          ),
-        ),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              medication.photoPath != null && File(medication.photoPath!).existsSync()
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(24),
-                      child: Image.file(
-                        File(medication.photoPath!),
-                        width: 48,
-                        height: 48,
-                        fit: BoxFit.cover,
-                      ),
-                    )
-                  : CircleAvatar(
-                      backgroundColor: theme.colorScheme.primaryContainer,
-                      child: Icon(Icons.medication, color: theme.colorScheme.onPrimaryContainer),
-                    ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      medication.nom,
-                      style: theme.textTheme.titleMedium,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${medication.quantite} ${_uniteLabel(medication)}${medication.quantiteParUnite != null ? ' (× ${medication.quantiteParUnite})' : ''}',
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
-                    ),
-                    if (medication.lieu != null && medication.lieu!.isNotEmpty)
-                      Text(
-                        medication.lieu!,
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
-                      ),
-                    if (memberName != null)
-                      Text(
-                        memberName!,
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
-                      ),
-                    if (medication.estBientotPerime || medication.stockFaible) ...[
-                      const SizedBox(height: 4),
-                      Wrap(
-                        spacing: 8,
-                        children: [
-                          if (medication.estPerime)
-                            Chip(
-                              label: Text(AppLocalizations.of(context).expired),
-                              backgroundColor: theme.colorScheme.errorContainer,
-                              labelStyle: TextStyle(color: theme.colorScheme.onErrorContainer, fontSize: 12),
-                            ),
-                          if (medication.estBientotPerime && !medication.estPerime)
-                            Chip(
-                              label: Text('${AppLocalizations.of(context).expiresIn} ${medication.joursAvantPeremption} ${AppLocalizations.of(context).days}'),
-                              backgroundColor: theme.colorScheme.tertiaryContainer,
-                              labelStyle: TextStyle(color: theme.colorScheme.onTertiaryContainer, fontSize: 12),
-                            ),
-                          if (medication.stockFaible)
-                            Chip(
-                              label: Text(AppLocalizations.of(context).lowStock),
-                              backgroundColor: theme.colorScheme.secondaryContainer,
-                              labelStyle: TextStyle(color: theme.colorScheme.onSecondaryContainer, fontSize: 12),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ],
+    final m = medication;
+    MedStatus status = MedStatus.ok;
+    if (m.estPerime) {
+      status = MedStatus.perime;
+    } else if (m.estBientotPerime) {
+      status = MedStatus.bientot;
+    } else if (m.stockFaible) {
+      status = MedStatus.bas;
+    }
+    final s = CoconColors.status[status]!;
+
+    return SoftCard(
+      borderColor: CoconColors.line,
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => MedicationDetailScreen(medicationId: m.id)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Container(width: 4, height: 44, decoration: BoxDecoration(color: s.fg, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(width: 10),
+          m.photoPath != null && File(m.photoPath!).existsSync()
+              ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(m.photoPath!), width: 44, height: 44, fit: BoxFit.cover))
+              : const CatAvatar(size: 44),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(m.nom, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Text(
+                  [
+                    '${m.quantite} ${_uniteLabel(m)}',
+                    if (m.lieu != null && m.lieu!.isNotEmpty) m.lieu!,
+                    if (memberName != null) memberName!,
+                  ].join(' · '),
+                  style: const TextStyle(color: CoconColors.muted, fontWeight: FontWeight.w700, fontSize: 12.5),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              Icon(Icons.chevron_right, color: theme.colorScheme.outline),
-            ],
+              ],
+            ),
           ),
-        ),
+          const SizedBox(width: 8),
+          StatusBadge(status: status),
+        ],
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../theme/cocon_theme.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -42,6 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
+      backgroundColor: CoconColors.bg,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -52,10 +54,20 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(Icons.medication, size: 64, color: theme.colorScheme.primary),
-                  const SizedBox(height: 16),
+                  Container(
+                    width: 72,
+                    height: 72,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: CoconColors.accent,
+                      borderRadius: BorderRadius.circular(22),
+                      boxShadow: [BoxShadow(color: CoconColors.accent.withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 8))],
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(Icons.medication_liquid, size: 36, color: Colors.white),
+                  ),
                   Text(
-                    'MediStock',
+                    'Medistock',
                     style: theme.textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -76,7 +88,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     autocorrect: false,
                     decoration: const InputDecoration(
                       labelText: 'Email',
-                      border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.email_outlined),
                     ),
                     validator: (v) {
@@ -91,7 +102,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     obscureText: _obscurePassword,
                     decoration: InputDecoration(
                       labelText: 'Mot de passe',
-                      border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         icon: Icon(

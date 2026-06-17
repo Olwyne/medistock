@@ -11,12 +11,11 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  supabase_flutter: ^2.8.0
-  flutter_dotenv: ^5.2.1
+  firebase_core: ^3.8.0
+  firebase_auth: ^5.3.3
+  cloud_firestore: ^5.5.0
   mobile_scanner: ^6.0.2
-  path: ^1.9.0
   path_provider: ^2.1.4
-  sqflite: ^2.3.2
   provider: ^6.1.2
   intl: ^0.20.2
   vibration: ^2.0.0
@@ -32,6 +31,7 @@ dependencies:
   file_picker: ^8.0.6
   share_plus: ^10.0.2
   flutter_beep: ^1.0.0
+  google_fonts: ^6.2.1
 
 dev_dependencies:
   flutter_test:
@@ -46,12 +46,11 @@ flutter_launcher_icons:
   web:
     generate: true
     image_path: "logo.png"
-    background_color: "#2E7D32"
-    theme_color: "#2E7D32"
+    background_color: "#FBF6EF"
+    theme_color: "#EC8A6A"
   macos:
     generate: true
 
 flutter:
   uses-material-design: true
   generate: true
-  # Optionnel : ajoutez "assets: ['.env']" et créez .env (copie de .env.example) pour Supabase

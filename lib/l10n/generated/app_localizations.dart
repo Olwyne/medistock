@@ -849,6 +849,36 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Vérifier avec votre médecin ou pharmacien.'**
   String get check_with_doctor;
+
+  /// No description provided for @sign_in.
+  ///
+  /// In fr, this message translates to:
+  /// **'Se connecter'**
+  String get sign_in;
+
+  /// No description provided for @sign_out.
+  ///
+  /// In fr, this message translates to:
+  /// **'Déconnexion'**
+  String get sign_out;
+
+  /// No description provided for @account_synced.
+  ///
+  /// In fr, this message translates to:
+  /// **'Foyer synchronisé'**
+  String get account_synced;
+
+  /// No description provided for @local_mode_title.
+  ///
+  /// In fr, this message translates to:
+  /// **'Connexion / Synchronisation'**
+  String get local_mode_title;
+
+  /// No description provided for @local_mode_message.
+  ///
+  /// In fr, this message translates to:
+  /// **'L\'application fonctionne en mode local. Pour vous connecter et synchroniser vos données avec un compte, configurez Supabase : créez un fichier .env à la racine du projet avec SUPABASE_URL et SUPABASE_ANON_KEY (voir .env.example), puis redémarrez l\'application.'**
+  String get local_mode_message;
 }
 
 class _AppLocalizationsDelegate

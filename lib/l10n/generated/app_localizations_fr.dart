@@ -393,4 +393,20 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get check_with_doctor => 'Vérifier avec votre médecin ou pharmacien.';
+
+  @override
+  String get sign_in => 'Se connecter';
+
+  @override
+  String get sign_out => 'Déconnexion';
+
+  @override
+  String get account_synced => 'Foyer synchronisé';
+
+  @override
+  String get local_mode_title => 'Connexion / Synchronisation';
+
+  @override
+  String get local_mode_message =>
+      'L\'application fonctionne en mode local. Pour vous connecter et synchroniser vos données avec un compte, configurez Supabase : créez un fichier .env à la racine du projet avec SUPABASE_URL et SUPABASE_ANON_KEY (voir .env.example), puis redémarrez l\'application.';
 }

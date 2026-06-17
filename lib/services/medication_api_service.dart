@@ -4,18 +4,20 @@ import 'package:http/http.dart' as http;
 /// Base de l'API BDPM (data.gouv.fr / medicaments-api.giygas.dev).
 const _baseUrl = 'https://medicaments-api.giygas.dev';
 
-/// Résultat de la recherche par CIP : nom, forme, unité et quantité suggérées.
+/// Résultat de la recherche par CIP : nom, forme, unité, quantité et substance(s) suggérées.
 class MedicationApiResult {
   final String nom;
   final String? formePharmaceutique;
   final String? suggestedUnite;
   final int? suggestedQuantiteParUnite;
+  final String? dci;
 
   const MedicationApiResult({
     required this.nom,
     this.formePharmaceutique,
     this.suggestedUnite,
     this.suggestedQuantiteParUnite,
+    this.dci,
   });
 }
 
@@ -93,35 +95,11 @@ class MedicationApiService {
         return const MedicationApiLookupResult(error: ApiError(ApiErrorType.unknown, 'Réponse invalide'));
       }
 
-      final nom = obj['elementPharmaceutique'] as String?;
-      if (nom == null || nom.isEmpty) {
+      final result = _fromObj(obj);
+      if (result == null) {
         return const MedicationApiLookupResult(error: ApiError(ApiErrorType.unknown, 'Médicament non trouvé'));
       }
-
-      final forme = obj['formePharmaceutique'] as String?;
-      final presentation = obj['presentation'] as List<dynamic>?;
-      String? suggestedUnite;
-      int? suggestedQuantiteParUnite;
-      if (presentation != null && presentation.isNotEmpty) {
-        final first = presentation.first;
-        if (first is Map<String, dynamic>) {
-          final libelle = first['libelle'] as String? ?? '';
-          final parsed = parsePresentationLibelle(libelle, forme);
-          suggestedUnite = parsed.$1;
-          suggestedQuantiteParUnite = parsed.$2;
-        }
-      }
-      if (suggestedUnite == null && forme != null) {
-        suggestedUnite = _uniteFromForme(forme);
-      }
-      return MedicationApiLookupResult(
-        data: MedicationApiResult(
-          nom: nom.trim(),
-          formePharmaceutique: forme?.trim(),
-          suggestedUnite: suggestedUnite,
-          suggestedQuantiteParUnite: suggestedQuantiteParUnite,
-        ),
-      );
+      return MedicationApiLookupResult(data: result);
     } on http.ClientException catch (e) {
       return MedicationApiLookupResult(error: ApiError(ApiErrorType.network, e.message));
     } on FormatException catch (e) {
@@ -129,6 +107,111 @@ class MedicationApiService {
     } catch (e) {
       return MedicationApiLookupResult(error: ApiError(ApiErrorType.unknown, e.toString()));
     }
+  }
+
+  /// Fallback EAN : interroge Open Food Facts, récupère le nom produit, puis searchByName.
+  /// Utilisé quand lookupByCip ne trouve rien (produit OTC non indexé par CIP).
+  Future<MedicationApiLookupResult> lookupByEanFallback(String ean) async {
+    final digits = ean.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) {
+      return const MedicationApiLookupResult(error: ApiError(ApiErrorType.unknown, 'EAN invalide'));
+    }
+    try {
+      final offUri = Uri.parse('https://world.openfoodfacts.org/api/v0/product/$digits.json');
+      final offResponse = await http.get(offUri, headers: {'User-Agent': 'Medistock/1.0'}).timeout(
+        const Duration(seconds: 6),
+        onTimeout: () => http.Response('', 408),
+      );
+      if (offResponse.statusCode == 200) {
+        final offDecoded = json.decode(offResponse.body);
+        if (offDecoded is Map<String, dynamic> && offDecoded['status'] == 1) {
+          final product = offDecoded['product'] as Map<String, dynamic>?;
+          if (product != null) {
+            final name = (product['product_name_fr'] as String?)?.trim() ??
+                (product['product_name'] as String?)?.trim();
+            if (name != null && name.isNotEmpty) {
+              final results = await searchByName(name);
+              if (results.isNotEmpty) {
+                return MedicationApiLookupResult(data: results.first);
+              }
+            }
+          }
+        }
+      }
+      return const MedicationApiLookupResult(error: ApiError(ApiErrorType.unknown, 'Introuvable'));
+    } on http.ClientException catch (e) {
+      return MedicationApiLookupResult(error: ApiError(ApiErrorType.network, e.message));
+    } catch (e) {
+      return MedicationApiLookupResult(error: ApiError(ApiErrorType.unknown, e.toString()));
+    }
+  }
+
+  /// Recherche par nom (1 à 6 mots, min 3 caractères). Pour l'autocomplétion à la saisie.
+  Future<List<MedicationApiResult>> searchByName(String query) async {
+    final term = query.trim();
+    if (term.length < 3) return [];
+    try {
+      final uri = Uri.parse('$_baseUrl/v1/medicaments').replace(queryParameters: {'search': term});
+      final response = await http.get(uri).timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) return [];
+      final decoded = json.decode(response.body);
+      final list = decoded is List
+          ? decoded
+          : decoded is Map<String, dynamic> && decoded['data'] is List
+              ? decoded['data'] as List
+              : const [];
+      return list
+          .whereType<Map<String, dynamic>>()
+          .map(_fromObj)
+          .whereType<MedicationApiResult>()
+          .take(15)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  MedicationApiResult? _fromObj(Map<String, dynamic> obj) {
+    final nom = obj['elementPharmaceutique'] as String?;
+    if (nom == null || nom.isEmpty) return null;
+
+    final forme = obj['formePharmaceutique'] as String?;
+    final presentation = obj['presentation'] as List<dynamic>?;
+    String? suggestedUnite;
+    int? suggestedQuantiteParUnite;
+    if (presentation != null && presentation.isNotEmpty) {
+      final first = presentation.first;
+      if (first is Map<String, dynamic>) {
+        final libelle = first['libelle'] as String? ?? '';
+        final parsed = parsePresentationLibelle(libelle, forme);
+        suggestedUnite = parsed.$1;
+        suggestedQuantiteParUnite = parsed.$2;
+      }
+    }
+    if (suggestedUnite == null && forme != null) {
+      suggestedUnite = _uniteFromForme(forme);
+    }
+
+    final composition = obj['composition'] as List<dynamic>?;
+    String? dci;
+    if (composition != null && composition.isNotEmpty) {
+      final substances = composition
+          .whereType<Map<String, dynamic>>()
+          .map((c) => c['denominationSubstance'] as String?)
+          .whereType<String>()
+          .where((s) => s.isNotEmpty)
+          .toSet()
+          .toList();
+      if (substances.isNotEmpty) dci = substances.join(' + ');
+    }
+
+    return MedicationApiResult(
+      nom: nom.trim(),
+      formePharmaceutique: forme?.trim(),
+      suggestedUnite: suggestedUnite,
+      suggestedQuantiteParUnite: suggestedQuantiteParUnite,
+      dci: dci,
+    );
   }
 
   /// Extrait unité et quantité depuis le libellé de présentation BDPM.
